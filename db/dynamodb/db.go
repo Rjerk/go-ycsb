@@ -19,12 +19,13 @@ import (
 )
 
 type dynamodbWrapper struct {
-        client             *dynamodb.Client
-        tablename          *string
-        primarykey         string
-        primarykeyPtr      *string
-        readCapacityUnits  int64
-        writeCapacityUnits int64
+        client              *dynamodb.Client
+        tablename           *string
+        primarykey          string
+        primarykeyPtr       *string
+        readCapacityUnits   int64
+        writeCapacityUnits  int64
+        transactWriteUnits  int64
 }
 
 func timer(name string) func() {
@@ -97,12 +98,13 @@ func (r *dynamodbWrapper) Update(ctx context.Context, table string, key string, 
 }
 
 func (r *dynamodbWrapper) Insert(ctx context.Context, table string, key string, values map[string][]byte) (err error) {
-    // values[r.primarykey] = []byte(key)
 
 	var txnItems []types.TransactWriteItem
 
+        // log.Printf("readCapacityUnits: %d\n", r.readCapacityUnits)
+        // log.Printf("transactWriteUnits: %d\n", r.transactWriteUnits)
 
-	for i := 0; i < 550; i++{
+	for i := 0; i < r.transactWriteUnits; i++{
 		values[r.primarykey] = []byte(key)
 		key = key + string(i)
 		keyInput, err := attributevalue.MarshalMap(values)
@@ -122,23 +124,23 @@ func (r *dynamodbWrapper) Insert(ctx context.Context, table string, key string, 
 
 	}
 
-    // deleteItem := &types.TransactWriteItem{
-    //     Delete: &types.Delete{
-    //         Key:       keyInput,
-    //         TableName: aws.String(table),
-    //     },
-    // }
-	defer timer("start")()
+        // deleteItem := &types.TransactWriteItem{
+        //     Delete: &types.Delete{
+        //         Key:       keyInput,
+        //         TableName: aws.String(table),
+        //     },
+        // }
+        defer timer("start")()
 
-    _, err = r.client.TransactWriteItems(context.TODO(), &dynamodb.TransactWriteItemsInput{
-        TransactItems: txnItems,
-    })
+        _, err = r.client.TransactWriteItems(context.TODO(), &dynamodb.TransactWriteItemsInput{
+                TransactItems: txnItems,
+        })
 
-    if err != nil {
-		log.Printf("Couldn't determine existence of table. Here's why: %v\n", err)
-        return err
-    }
-    return
+        if err != nil {
+                        log.Printf("Couldn't determine existence of table. Here's why: %v\n", err)
+                return err
+        }
+        return
 }
 
 func (r *dynamodbWrapper) Delete(ctx context.Context, table string, key string) error {
@@ -216,6 +218,7 @@ func (r dynamoDbCreator) Create(p *properties.Properties) (ycsb.DB, error) {
         rds.primarykeyPtr = aws.String(rds.primarykey)
         rds.readCapacityUnits = p.GetInt64(readCapacityUnitsFieldName, readCapacityUnitsFieldNameDefault)
         rds.writeCapacityUnits = p.GetInt64(writeCapacityUnitsFieldName, writeCapacityUnitsFieldNameDefault)
+        rds.transactWriteUnits = p.GetInt64(transactWriteUnitsFieldName, transactWriteUnitsFieldNameDefault)
         endpoint := p.GetString(endpointField, endpointFieldDefault)
         region := p.GetString(regionField, regionFieldDefault)
         command, _ := p.Get(prop.Command)
@@ -301,6 +304,8 @@ const (
         endpointFieldDefault               = ""
         regionField                        = "dynamodb.region"
         regionFieldDefault                 = ""
+        transactWriteUnitsFieldName       = "dynamodb.twc.units"
+        transactWriteUnitsFieldNameDefault = 500
 )
 
 func init() {
