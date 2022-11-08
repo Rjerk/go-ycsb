@@ -103,8 +103,11 @@ func (r *dynamodbWrapper) Insert(ctx context.Context, table string, key string, 
 
         // log.Printf("readCapacityUnits: %d\n", r.readCapacityUnits)
         // log.Printf("transactWriteUnits: %d\n", r.transactWriteUnits)
+        // log.Printf("transactWriteUnits: %T\n", r.transactWriteUnits)
+        n := int(r.transactWriteUnits)
+        // log.Printf("transactWriteUnits: %T\n", n)
 
-	for i := 0; i < r.transactWriteUnits; i++{
+	for i := 0; i < n; i++{
 		values[r.primarykey] = []byte(key)
 		key = key + string(i)
 		keyInput, err := attributevalue.MarshalMap(values)
