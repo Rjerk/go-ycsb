@@ -26,6 +26,7 @@ type dynamodbWrapper struct {
         readCapacityUnits   int64
         writeCapacityUnits  int64
         transactWriteUnits  int64
+        command             string
 }
 
 func timer(name string) func() {
@@ -47,6 +48,7 @@ func (r *dynamodbWrapper) CleanupThread(_ context.Context) {
 }
 
 func (r *dynamodbWrapper) Read(ctx context.Context, table string, key string, fields []string) (data map[string][]byte, err error) {
+
         data = make(map[string][]byte, len(fields))
 
         response, err := r.client.GetItem(context.TODO(), &dynamodb.GetItemInput{
@@ -78,23 +80,50 @@ func (r *dynamodbWrapper) Scan(ctx context.Context, table string, startKey strin
 }
 
 func (r *dynamodbWrapper) Update(ctx context.Context, table string, key string, values map[string][]byte) (err error) {
+
+        var txnItems []types.TransactWriteItem
+
+        //Update
         var upd = expression.UpdateBuilder{}
         for name, value := range values {
                 upd = upd.Set(expression.Name(name), expression.Value(&types.AttributeValueMemberB{Value: value}))
         }
         expr, err := expression.NewBuilder().WithUpdate(upd).Build()
 
-        _, err = r.client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
-                Key:                       r.GetKey(key),
-                TableName:                 r.tablename,
-                UpdateExpression:          expr.Update(),
-                ExpressionAttributeNames:  expr.Names(),
-                ExpressionAttributeValues: expr.Values(),
+        updateItem := &types.TransactWriteItem{
+                Update: &types.Update{
+                        Key:       r.GetKey(key),
+                        TableName: aws.String(table),
+                        UpdateExpression:          expr.Update(),
+                        ExpressionAttributeNames:  expr.Names(),
+                        ExpressionAttributeValues: expr.Values(),
+                },
+        }
+
+        txnItems = append(txnItems, *updateItem)
+
+        // delete
+        deleteTable := "usertable1"
+
+        deleteItem := &types.TransactWriteItem{
+                Delete: &types.Delete{
+                        TableName: aws.String(deleteTable),
+                        Key:       r.GetKey(key),
+                },
+        }
+
+        txnItems = append(txnItems, *deleteItem)
+
+        _, err = r.client.TransactWriteItems(context.TODO(), &dynamodb.TransactWriteItemsInput{
+                TransactItems: txnItems,
         })
+
         if err != nil {
-                log.Printf("Couldn't update item to table. Here's why: %v\nUpdateExpression:%s\nExpressionAttributeNames:%s\n", err, *expr.Update(), expr.Names())
+                        log.Printf("Couldn't determine existence of table. Here's why: %v\n", err)
+                return err
         }
         return
+
 }
 
 func (r *dynamodbWrapper) Insert(ctx context.Context, table string, key string, values map[string][]byte) (err error) {
@@ -105,27 +134,68 @@ func (r *dynamodbWrapper) Insert(ctx context.Context, table string, key string, 
         // log.Printf("transactWriteUnits: %d\n", r.transactWriteUnits)
         // log.Printf("transactWriteUnits: %T\n", r.transactWriteUnits)
         n := int(r.transactWriteUnits)
-        // log.Printf("transactWriteUnits: %T\n", n)
+        log.Printf("command: %v\n", r.command)
 
-	for i := 0; i < n; i++{
-		values[r.primarykey] = []byte(key)
-		key = key + string(i)
-		keyInput, err := attributevalue.MarshalMap(values)
-		if err != nil {
-			log.Printf("Couldn't update item to table. Here's why: %v\n", err)
-			return err
-		}
+        if strings.Compare("load", r.command) == 0 {
+                for i := 0; i < n; i++{
+                        values[r.primarykey] = []byte(key)
+                        key = key + string(i)
+                        keyInput, err := attributevalue.MarshalMap(values)
+                        if err != nil {
+                                log.Printf("Couldn't update item to table. Here's why: %v\n", err)
+                                return err
+                        }
 
-		writeItem := &types.TransactWriteItem{
-			Put: &types.Put{
-				Item:      keyInput,
-				TableName: aws.String(table),
-			},
-		}
+                        writeItem := &types.TransactWriteItem{
+                                Put: &types.Put{
+                                        Item:      keyInput,
+                                        TableName: aws.String(table),
+                                },
+                        }
 
-		txnItems = append(txnItems, *writeItem)
+                        txnItems = append(txnItems, *writeItem)
+                }
+        }else {
+                //Update
+                var upd = expression.UpdateBuilder{}
+                for name, value := range values {
+                        upd = upd.Set(expression.Name(name), expression.Value(&types.AttributeValueMemberB{Value: value}))
+                }
+                expr, err := expression.NewBuilder().WithUpdate(upd).Build()
 
-	}
+                updateItem := &types.TransactWriteItem{
+                        Update: &types.Update{
+                                Key:       r.GetKey(key),
+                                TableName: aws.String(table),
+                                UpdateExpression:          expr.Update(),
+                                ExpressionAttributeNames:  expr.Names(),
+                                ExpressionAttributeValues: expr.Values(),
+                        },
+                }
+
+                txnItems = append(txnItems, *updateItem)
+
+                // put
+                putTable := "usertable1"
+
+                values[r.primarykey] = []byte(key)
+                keyInput, err := attributevalue.MarshalMap(values)
+                if err != nil {
+                        log.Printf("Couldn't update item to table. Here's why: %v\n", err)
+                        return err
+                }
+
+                putItem := &types.TransactWriteItem{
+                        Put: &types.Put{
+                                Item:      keyInput,
+                                TableName: aws.String(putTable),
+                        },
+                }
+
+                txnItems = append(txnItems, *putItem)
+        }
+
+
 
         // deleteItem := &types.TransactWriteItem{
         //     Delete: &types.Delete{
@@ -222,6 +292,7 @@ func (r dynamoDbCreator) Create(p *properties.Properties) (ycsb.DB, error) {
         rds.readCapacityUnits = p.GetInt64(readCapacityUnitsFieldName, readCapacityUnitsFieldNameDefault)
         rds.writeCapacityUnits = p.GetInt64(writeCapacityUnitsFieldName, writeCapacityUnitsFieldNameDefault)
         rds.transactWriteUnits = p.GetInt64(transactWriteUnitsFieldName, transactWriteUnitsFieldNameDefault)
+        rds.command, _ = p.Get(prop.Command)
         endpoint := p.GetString(endpointField, endpointFieldDefault)
         region := p.GetString(regionField, regionFieldDefault)
         command, _ := p.Get(prop.Command)
@@ -308,7 +379,7 @@ const (
         regionField                        = "dynamodb.region"
         regionFieldDefault                 = ""
         transactWriteUnitsFieldName       = "dynamodb.twc.units"
-        transactWriteUnitsFieldNameDefault = 500
+        transactWriteUnitsFieldNameDefault = 1
 )
 
 func init() {
