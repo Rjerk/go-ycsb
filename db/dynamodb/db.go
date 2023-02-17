@@ -4,6 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
+	"strings"
+	"time"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -13,9 +17,6 @@ import (
 	"github.com/magiconair/properties"
 	"github.com/pingcap/go-ycsb/pkg/prop"
 	"github.com/pingcap/go-ycsb/pkg/ycsb"
-	"log"
-	"strings"
-	"time"
 )
 
 type dynamodbWrapper struct {
@@ -65,8 +66,30 @@ func (r *dynamodbWrapper) GetKey(key string) map[string]types.AttributeValue {
 	}
 }
 
-func (r *dynamodbWrapper) Scan(ctx context.Context, table string, startKey string, count int, fields []string) ([]map[string][]byte, error) {
-	return nil, fmt.Errorf("scan is not supported")
+func (r *dynamodbWrapper) Scan(ctx context.Context, table string, startKey string, count int, fields []string) (result []map[string][]byte, err error) {
+	limit := int32(count)
+
+	response, err := r.client.Scan(context.TODO(), &dynamodb.ScanInput{
+		TableName:         r.tablename,
+		ExclusiveStartKey: r.GetKey(startKey),
+		AttributesToGet:   fields,
+		Limit:             &limit,
+	})
+
+	data := make([]map[string][]byte, len(fields))
+	if err != nil {
+		panic(fmt.Sprintf("failed to Scan items, %v", err))
+		return data, err
+	}
+
+	err = attributevalue.UnmarshalListOfMaps(response.Items, &data)
+	if err != nil {
+		panic(fmt.Sprintf("failed to unmarshal Dynamodb Scan Items, %v", err))
+	}
+
+	result = append(result, data...)
+
+	return data, nil
 }
 
 func (r *dynamodbWrapper) Update(ctx context.Context, table string, key string, values map[string][]byte) (err error) {
@@ -252,7 +275,7 @@ func (rds *dynamodbWrapper) deleteTable() error {
 
 const (
 	tablename                          = "dynamodb.tablename"
-	tablenameDefault                   = "ycsb"
+	tablenameDefault                   = "usertable"
 	primaryKeyFieldName                = "dynamodb.primarykey"
 	primaryKeyFieldNameDefault         = "_key"
 	readCapacityUnitsFieldName         = "dynamodb.rc.units"
