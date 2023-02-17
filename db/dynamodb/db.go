@@ -16,6 +16,7 @@ import (
         "log"
         "strings"
         "time"
+        "strconv"
 )
 
 type dynamodbWrapper struct {
@@ -130,56 +131,71 @@ func (r *dynamodbWrapper) Insert(ctx context.Context, table string, key string, 
 
 	var txnItems []types.TransactWriteItem
 
-        // log.Printf("readCapacityUnits: %d\n", r.readCapacityUnits)
-        // log.Printf("transactWriteUnits: %d\n", r.transactWriteUnits)
-        // log.Printf("transactWriteUnits: %T\n", r.transactWriteUnits)
-        n := int(r.transactWriteUnits)
-        log.Printf("command: %v\n", r.command)
+        // put
+        putTable := "obj_meta_general_x"
+        putTable2 := "bucket_stats"
+
+        Item1 := map[string]string{
+                "bi": "obj_meta_2f946334-0400-4aab-8974-9835201f3967yblbucket001%.99235.1.0",
+                "obj": "1M_10w_NB1_2023012801n",
+                "attr_idtag": "OGI4NTI0YjktNzliZi00ZmNmLTg5M2UtYzYzNDY5ZWZjYWZiLjcwNjgyMi43ODc5Mzc=",
+                "head": "CAPOAAAAGAAAADFNXzEwd19OQjFfMjAyMzAxMjgwMW4zNAAAAAAAAAAAAAcDeAAAAAFAQg8AAAAAACl91GNqvF8VIAAAAGJiZmRiYzkwZTBhZmQyNWVhYzgyNTIxN2FmNTdmNjMxAwAAAHlibAMAAAB5YmwYAAAAYXBwbGljYXRpb24vb2N0ZXQtc3RyZWFtQEIPAAAAAAAAAAAACAAAAFNUQU5EQVJEAAAAAAAAAAAAAQEKAAAAiP//////////AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+                "val": "CAPOAAAAGAAAADFNXzEwd19OQjFfMjAyMzAxMjgwMW4zNAAAAAAAAAAAAAcDeAAAAAFAQg8AAAAAACl91GNqvF8VIAAAAGJiZmRiYzkwZTBhZmQyNWVhYzgyNTIxN2FmNTdmNjMxAwAAAHlibAMAAAB5YmwYAAAAYXBwbGljYXRpb24vb2N0ZXQtc3RyZWFtQEIPAAAAAAAAAAAACAAAAFNUQU5EQVJEAAAAAAAAAAAAAQEKAAAAiP//////////AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+                "ver": "0",
+                "xid": "532a4018-4c7c-442e-8e49-8b215dd2504b",
+        }
+
+        Item2 := map[string]string{
+                "bi": "obj_meta_2f946334-0400-4aab-8974-9835201f3967yblbucket001%.99235.1.0",
+                "category": "rgw.main:STANDARD",
+                "actual_size": "1000",
+                "total_size": "1000",
+                "num_entries": "1",
+                "total_size_rounded": "1000000",
+        }
+
+        Item1["obj"] = "1M_10w_NB1_2023012801n" + strconv.FormatInt(r.transactWriteUnits, 10)
+        // Item2["num_entries"] = strconv.FormatInt(r.transactWriteUnits, 10)
+        r.transactWriteUnits += 1
+        // log.Printf("r.transactWriteUnits: %d\n", r.transactWriteUnits)
+
+        MyPk := "obj_meta_2f946334-0400-4aab-8974-9835201f3967yblbucket001%.99235.1.0"
+        MySk := "rgw.main:STANDARD"
+
+        MyUpdateExpression := "ADD actual_size :as, total_size :ts, num_entries :ne, total_size_rounded :tsr"
 
         if strings.Compare("load", r.command) == 0 {
-                for i := 0; i < n; i++{
-                        values[r.primarykey] = []byte(key)
-                        key = key + string(i)
-                        keyInput, err := attributevalue.MarshalMap(values)
-                        if err != nil {
-                                log.Printf("Couldn't update item to table. Here's why: %v\n", err)
-                                return err
-                        }
-
-                        writeItem := &types.TransactWriteItem{
-                                Put: &types.Put{
-                                        Item:      keyInput,
-                                        TableName: aws.String(table),
-                                },
-                        }
-
-                        txnItems = append(txnItems, *writeItem)
-                }
-        }else {
-                //Update
-                var upd = expression.UpdateBuilder{}
-                for name, value := range values {
-                        upd = upd.Set(expression.Name(name), expression.Value(&types.AttributeValueMemberB{Value: value}))
-                }
-                expr, err := expression.NewBuilder().WithUpdate(upd).Build()
-
                 updateItem := &types.TransactWriteItem{
                         Update: &types.Update{
-                                Key:       r.GetKey(key),
-                                TableName: aws.String(table),
-                                UpdateExpression:          expr.Update(),
-                                ExpressionAttributeNames:  expr.Names(),
-                                ExpressionAttributeValues: expr.Values(),
+                                Key: map[string]types.AttributeValue{
+                                        "bi": &types.AttributeValueMemberS{
+                                                Value: Item2["bi"],
+                                        },
+                                        "category": &types.AttributeValueMemberS{
+                                                Value: Item2["category"],
+                                        },
+                                },
+                                
+                                TableName: aws.String(putTable2),
+                                UpdateExpression:       aws.String(MyUpdateExpression),
+                                // ExpressionAttributeNames:  map[string]string{
+                                //         ":as": "actual_size",
+                                //         ":ts": "total_size",
+                                //         ":ne": "num_entries",
+                                //         ":tsr": "total_size_rounded",
+                                // },
+                                ExpressionAttributeValues: map[string]types.AttributeValue{
+                                        ":as": &types.AttributeValueMemberN{Value: "100000"},
+                                        ":ts": &types.AttributeValueMemberN{Value: "1000"},
+                                        ":ne": &types.AttributeValueMemberN{Value: "1"},
+                                        ":tsr": &types.AttributeValueMemberN{Value: "10000"},
+                                },
                         },
                 }
 
                 txnItems = append(txnItems, *updateItem)
 
-                // put
-                putTable := "usertable1"
-
-                values[r.primarykey] = []byte(key)
-                keyInput, err := attributevalue.MarshalMap(values)
+                keyInput, err := attributevalue.MarshalMap(Item1)
                 if err != nil {
                         log.Printf("Couldn't update item to table. Here's why: %v\n", err)
                         return err
@@ -193,6 +209,53 @@ func (r *dynamodbWrapper) Insert(ctx context.Context, table string, key string, 
                 }
 
                 txnItems = append(txnItems, *putItem)
+        }else {
+                updateItem := &types.TransactWriteItem{
+                        Update: &types.Update{
+                                Key: map[string]types.AttributeValue{
+                                        "bi": &types.AttributeValueMemberS{
+                                                Value: MyPk,
+                                        },
+                                        "category": &types.AttributeValueMemberS{
+                                                Value: MySk,
+                                        },
+                                },
+                                
+                                TableName: aws.String(putTable2),
+                                UpdateExpression:       aws.String(MyUpdateExpression),
+                                // ExpressionAttributeNames:  map[string]string{
+                                //         ":as": "actual_size",
+                                //         ":ts": "total_size",
+                                //         ":ne": "num_entries",
+                                //         ":tsr": "total_size_rounded",
+                                // },
+                                ExpressionAttributeValues: map[string]types.AttributeValue{
+                                        ":as": &types.AttributeValueMemberN{Value: "100000"},
+                                        ":ts": &types.AttributeValueMemberN{Value: "1000"},
+                                        ":ne": &types.AttributeValueMemberN{Value: "1"},
+                                        ":tsr": &types.AttributeValueMemberN{Value: "10000"},
+                                },
+                        },
+                }
+
+                txnItems = append(txnItems, *updateItem) 
+                
+                // delete
+                deleteItem := &types.TransactWriteItem{
+                        Delete: &types.Delete{
+                                TableName: aws.String(putTable),
+                                Key: map[string]types.AttributeValue{
+                                        "bi": &types.AttributeValueMemberS{
+                                                Value: Item1["bi"],
+                                        },
+                                        "obj": &types.AttributeValueMemberS{
+                                                Value: Item1["obj"],
+                                        },
+                                },
+                        },
+                }
+
+                txnItems = append(txnItems, *deleteItem)
         }
 
 
