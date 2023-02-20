@@ -8,8 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"strconv"
-
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -19,7 +17,12 @@ import (
 	"github.com/magiconair/properties"
 	"github.com/pingcap/go-ycsb/pkg/prop"
 	"github.com/pingcap/go-ycsb/pkg/ycsb"
+
+	"github.com/google/uuid"
 )
+
+var stats_table = "bucket_stats"
+var index_table = "obj_meta_general_x"
 
 type dynamodbWrapper struct {
 	client             *dynamodb.Client
@@ -152,16 +155,11 @@ func (r *dynamodbWrapper) Update(ctx context.Context, table string, key string, 
 }
 
 func (r *dynamodbWrapper) Insert(ctx context.Context, table string, key string, values map[string][]byte) (err error) {
-
 	var txnItems []types.TransactWriteItem
 
-	// put
-	Table := "obj_meta_general_x"
-	Table2 := "bucket_stats"
-
-	Item1 := map[string]string{
+	indextable_item := map[string]string{
 		"bi":         "obj_meta_2f946334-0400-4aab-8974-9835201f3967yblbucket001%.99235.1.0",
-		"obj":        "1M_10w_NB1_2023012801n",
+		"obj":        fmt.Sprintf("%v-%v", "1M_10w_NB1_2023012801n", uuid.New().String()),
 		"attr_idtag": "OGI4NTI0YjktNzliZi00ZmNmLTg5M2UtYzYzNDY5ZWZjYWZiLjcwNjgyMi43ODc5Mzc=",
 		"head":       "CAPOAAAAGAAAADFNXzEwd19OQjFfMjAyMzAxMjgwMW4zNAAAAAAAAAAAAAcDeAAAAAFAQg8AAAAAACl91GNqvF8VIAAAAGJiZmRiYzkwZTBhZmQyNWVhYzgyNTIxN2FmNTdmNjMxAwAAAHlibAMAAAB5YmwYAAAAYXBwbGljYXRpb24vb2N0ZXQtc3RyZWFtQEIPAAAAAAAAAAAACAAAAFNUQU5EQVJEAAAAAAAAAAAAAQEKAAAAiP//////////AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
 		"val":        "CAPOAAAAGAAAADFNXzEwd19OQjFfMjAyMzAxMjgwMW4zNAAAAAAAAAAAAAcDeAAAAAFAQg8AAAAAACl91GNqvF8VIAAAAGJiZmRiYzkwZTBhZmQyNWVhYzgyNTIxN2FmNTdmNjMxAwAAAHlibAMAAAB5YmwYAAAAYXBwbGljYXRpb24vb2N0ZXQtc3RyZWFtQEIPAAAAAAAAAAAACAAAAFNUQU5EQVJEAAAAAAAAAAAAAQEKAAAAiP//////////AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
@@ -169,7 +167,7 @@ func (r *dynamodbWrapper) Insert(ctx context.Context, table string, key string, 
 		"xid":        "532a4018-4c7c-442e-8e49-8b215dd2504b",
 	}
 
-	Item2 := map[string]string{
+	stats_table_item := map[string]string{
 		"bi":                 "obj_meta_2f946334-0400-4aab-8974-9835201f3967yblbucket001%.99235.1.0",
 		"category":           "rgw.main:STANDARD",
 		"actual_size":        "1000",
@@ -178,122 +176,60 @@ func (r *dynamodbWrapper) Insert(ctx context.Context, table string, key string, 
 		"total_size_rounded": "1000000",
 	}
 
-	Item1["obj"] = "1M_10w_NB1_2023012801n" + strconv.FormatInt(r.transactWriteUnits, 10)
-	// Item2["num_entries"] = strconv.FormatInt(r.transactWriteUnits, 10)
-	r.transactWriteUnits += 1
-	// log.Printf("r.transactWriteUnits: %d\n", r.transactWriteUnits)
-
-	MyUpdateExpression := "ADD actual_size :as, total_size :ts, num_entries :ne, total_size_rounded :tsr"
-
-	if strings.Compare("load", r.command) == 0 {
-		updateItem := &types.TransactWriteItem{
-			Update: &types.Update{
-				Key: map[string]types.AttributeValue{
-					"bi": &types.AttributeValueMemberS{
-						Value: Item2["bi"],
-					},
-					"category": &types.AttributeValueMemberS{
-						Value: Item2["category"],
-					},
+	updateItem := &types.TransactWriteItem{
+		Update: &types.Update{
+			Key: map[string]types.AttributeValue{
+				"bi": &types.AttributeValueMemberS{
+					Value: stats_table_item["bi"],
 				},
-
-				TableName:        aws.String(Table2),
-				UpdateExpression: aws.String(MyUpdateExpression),
-				// ExpressionAttributeNames:  map[string]string{
-				//         ":as": "actual_size",
-				//         ":ts": "total_size",
-				//         ":ne": "num_entries",
-				//         ":tsr": "total_size_rounded",
-				// },
-				ExpressionAttributeValues: map[string]types.AttributeValue{
-					":as":  &types.AttributeValueMemberN{Value: "100000"},
-					":ts":  &types.AttributeValueMemberN{Value: "1000"},
-					":ne":  &types.AttributeValueMemberN{Value: "1"},
-					":tsr": &types.AttributeValueMemberN{Value: "10000"},
+				"category": &types.AttributeValueMemberS{
+					Value: stats_table_item["category"],
 				},
 			},
-		}
 
+			TableName:        aws.String(stats_table),
+			UpdateExpression: aws.String("ADD actual_size :as, total_size :ts, num_entries :ne, total_size_rounded :tsr"),
+			// ExpressionAttributeNames: map[string]string{
+			// 	":as":  "actual_size",
+			// 	":ts":  "total_size",
+			// 	":ne":  "num_entries",
+			// 	":tsr": "total_size_rounded",
+			// },
+			ExpressionAttributeValues: map[string]types.AttributeValue{
+				":as":  &types.AttributeValueMemberN{Value: "100000"},
+				":ts":  &types.AttributeValueMemberN{Value: "1000"},
+				":ne":  &types.AttributeValueMemberN{Value: "1"},
+				":tsr": &types.AttributeValueMemberN{Value: "10000"},
+			},
+		},
+	}
+
+	if strings.Compare("load", r.command) == 0 {
 		txnItems = append(txnItems, *updateItem)
 
-		keyInput, err := attributevalue.MarshalMap(Item1)
+		keyInput, err := attributevalue.MarshalMap(indextable_item)
 		if err != nil {
 			log.Printf("Couldn't update item to table. Here's why: %v\n", err)
 			return err
 		}
 
-		putItem := &types.TransactWriteItem{
+		txnItems = append(txnItems, types.TransactWriteItem{
 			Put: &types.Put{
 				Item:                keyInput,
-				TableName:           aws.String(Table),
+				TableName:           aws.String(index_table),
 				ConditionExpression: aws.String("attribute_not_exists(obj)"),
 			},
-		}
-
-		txnItems = append(txnItems, *putItem)
-	} else {
-		updateItem := &types.TransactWriteItem{
-			Update: &types.Update{
-				Key: map[string]types.AttributeValue{
-					"bi": &types.AttributeValueMemberS{
-						Value: Item2["bi"],
-					},
-					"category": &types.AttributeValueMemberS{
-						Value: Item2["category"],
-					},
-				},
-
-				TableName:        aws.String(Table2),
-				UpdateExpression: aws.String(MyUpdateExpression),
-				// ExpressionAttributeNames:  map[string]string{
-				//         ":as": "actual_size",
-				//         ":ts": "total_size",
-				//         ":ne": "num_entries",
-				//         ":tsr": "total_size_rounded",
-				// },
-				ExpressionAttributeValues: map[string]types.AttributeValue{
-					":as":  &types.AttributeValueMemberN{Value: "100000"},
-					":ts":  &types.AttributeValueMemberN{Value: "1000"},
-					":ne":  &types.AttributeValueMemberN{Value: "1"},
-					":tsr": &types.AttributeValueMemberN{Value: "10000"},
-				},
-			},
-		}
-
-		txnItems = append(txnItems, *updateItem)
-
-		// delete
-		deleteItem := &types.TransactWriteItem{
-			Delete: &types.Delete{
-				TableName: aws.String(Table),
-				Key: map[string]types.AttributeValue{
-					"bi": &types.AttributeValueMemberS{
-						Value: Item1["bi"],
-					},
-					"obj": &types.AttributeValueMemberS{
-						Value: Item1["obj"],
-					},
-				},
-			},
-		}
-
-		txnItems = append(txnItems, *deleteItem)
+		})
 	}
 
-	// deleteItem := &types.TransactWriteItem{
-	//     Delete: &types.Delete{
-	//         Key:       keyInput,
-	//         TableName: aws.String(table),
-	//     },
-	// }
-	defer timer("start")()
+	// defer timer("start")()
 
 	_, err = r.client.TransactWriteItems(context.TODO(), &dynamodb.TransactWriteItemsInput{
 		TransactItems: txnItems,
 	})
 
 	if err != nil {
-		log.Printf("Couldn't determine existence of table. Here's why: %v\n", err)
+		log.Printf("Error found. Here's why: %v\n", err)
 		return err
 	}
 	return
@@ -310,10 +246,10 @@ func (r *dynamodbWrapper) Delete(ctx context.Context, table string, key string) 
 type dynamoDbCreator struct{}
 
 // TableExists determines whether a DynamoDB table exists.
-func (r *dynamodbWrapper) tableExists() (bool, error) {
+func (r *dynamodbWrapper) tableExists(tableName string) (bool, error) {
 	exists := true
 	_, err := r.client.DescribeTable(
-		context.TODO(), &dynamodb.DescribeTableInput{TableName: r.tablename},
+		context.TODO(), &dynamodb.DescribeTableInput{TableName: &tableName},
 	)
 	if err != nil {
 		var notFoundEx *types.ResourceNotFoundException
@@ -321,7 +257,7 @@ func (r *dynamodbWrapper) tableExists() (bool, error) {
 			log.Printf("Table %v does not exist.\n", *r.tablename)
 			err = nil
 		} else {
-			log.Printf("Couldn't determine existence of table %v. Here's why: %v\n", *r.tablename, err)
+			log.Printf("Couldn't determine existence of table %v. Here's why: %v\n", tableName, err)
 		}
 		exists = false
 	}
@@ -330,36 +266,107 @@ func (r *dynamodbWrapper) tableExists() (bool, error) {
 
 // This function uses NewTableExistsWaiter to wait for the table to be created by
 // DynamoDB before it returns.
-func (r *dynamodbWrapper) createTable() (*types.TableDescription, error) {
+func (r *dynamodbWrapper) createTable(tableName string) (*types.TableDescription, error) {
 	var tableDesc *types.TableDescription
-	table, err := r.client.CreateTable(context.TODO(), &dynamodb.CreateTableInput{
-		AttributeDefinitions: []types.AttributeDefinition{{
-			AttributeName: r.primarykeyPtr,
-			AttributeType: types.ScalarAttributeTypeB,
-		}},
-		KeySchema: []types.KeySchemaElement{
-			{
-				AttributeName: r.primarykeyPtr,
-				KeyType:       types.KeyTypeHash,
+	var err error
+
+	if tableName == index_table {
+		table, err := r.client.CreateTable(context.TODO(), &dynamodb.CreateTableInput{
+			AttributeDefinitions: []types.AttributeDefinition{
+				{
+					AttributeName: aws.String("bi"),
+					AttributeType: types.ScalarAttributeTypeS,
+				},
+				{
+					AttributeName: aws.String("obj"),
+					AttributeType: types.ScalarAttributeTypeS,
+				},
 			},
-		},
-		TableName: r.tablename,
-		ProvisionedThroughput: &types.ProvisionedThroughput{
-			ReadCapacityUnits:  aws.Int64(r.readCapacityUnits),
-			WriteCapacityUnits: aws.Int64(r.writeCapacityUnits),
-		},
-	})
+			KeySchema: []types.KeySchemaElement{
+				{
+					AttributeName: aws.String("bi"),
+					KeyType:       types.KeyTypeHash,
+				},
+				{
+					AttributeName: aws.String("obj"),
+					KeyType:       types.KeyTypeRange,
+				},
+			},
+			TableName: &tableName,
+			ProvisionedThroughput: &types.ProvisionedThroughput{
+				ReadCapacityUnits:  aws.Int64(r.readCapacityUnits),
+				WriteCapacityUnits: aws.Int64(r.writeCapacityUnits),
+			},
+		})
+		if err != nil {
+			log.Printf("Couldn't create table %v. Here's why: %v\n", tableName, err)
+		}
+		tableDesc = table.TableDescription
+	} else if tableName == stats_table {
+		table, err := r.client.CreateTable(context.TODO(), &dynamodb.CreateTableInput{
+			AttributeDefinitions: []types.AttributeDefinition{
+				{
+					AttributeName: aws.String("bi"),
+					AttributeType: types.ScalarAttributeTypeS,
+				},
+				{
+					AttributeName: aws.String("category"),
+					AttributeType: types.ScalarAttributeTypeS,
+				},
+			},
+			KeySchema: []types.KeySchemaElement{
+				{
+					AttributeName: aws.String("bi"),
+					KeyType:       types.KeyTypeHash,
+				},
+				{
+					AttributeName: aws.String("category"),
+					KeyType:       types.KeyTypeRange,
+				},
+			},
+			TableName: &tableName,
+			ProvisionedThroughput: &types.ProvisionedThroughput{
+				ReadCapacityUnits:  aws.Int64(r.readCapacityUnits),
+				WriteCapacityUnits: aws.Int64(r.writeCapacityUnits),
+			},
+		})
+		if err != nil {
+			log.Printf("Couldn't create table %v. Here's why: %v\n", tableName, err)
+		}
+		tableDesc = table.TableDescription
+	} else {
+		table, err := r.client.CreateTable(context.TODO(), &dynamodb.CreateTableInput{
+			AttributeDefinitions: []types.AttributeDefinition{{
+				AttributeName: r.primarykeyPtr,
+				AttributeType: types.ScalarAttributeTypeB,
+			}},
+			KeySchema: []types.KeySchemaElement{
+				{
+					AttributeName: r.primarykeyPtr,
+					KeyType:       types.KeyTypeHash,
+				},
+			},
+			TableName: &tableName,
+			ProvisionedThroughput: &types.ProvisionedThroughput{
+				ReadCapacityUnits:  aws.Int64(r.readCapacityUnits),
+				WriteCapacityUnits: aws.Int64(r.writeCapacityUnits),
+			},
+		})
+		if err != nil {
+			log.Printf("Couldn't create table %v. Here's why: %v\n", tableName, err)
+		}
+		tableDesc = table.TableDescription
+	}
 	if err != nil {
-		log.Printf("Couldn't create table %v. Here's why: %v\n", *r.tablename, err)
+		log.Printf("Couldn't create table %v. Here's why: %v\n", tableName, err)
 	} else {
 		log.Printf("Waiting for table to be available.\n")
 		waiter := dynamodb.NewTableExistsWaiter(r.client)
 		err = waiter.Wait(context.TODO(), &dynamodb.DescribeTableInput{
-			TableName: r.tablename}, 5*time.Minute)
+			TableName: &tableName}, 5*time.Minute)
 		if err != nil {
 			log.Printf("Wait for table exists failed. Here's why: %v\n", err)
 		}
-		tableDesc = table.TableDescription
 	}
 	return tableDesc, err
 }
@@ -407,17 +414,23 @@ func (r dynamoDbCreator) Create(p *properties.Properties) (ycsb.DB, error) {
 	}
 	// Create DynamoDB client
 	rds.client = dynamodb.NewFromConfig(cfg)
-	exists, err := rds.tableExists()
+	exists, err := rds.tableExists(*rds.tablename)
 
 	if strings.Compare("load", command) == 0 {
 		if !exists {
-			_, err = rds.createTable()
+			_, err = rds.createTable(*rds.tablename)
+			_, err = rds.createTable(index_table)
+			_, err = rds.createTable(stats_table)
 		} else {
 			ensureCleanTable := p.GetBool(ensureCleanTableFieldName, ensureCleanTableFieldNameDefault)
 			if ensureCleanTable {
 				log.Printf("dynamo table named %s already existed. Deleting it...\n", *rds.tablename)
-				_ = rds.deleteTable()
-				_, err = rds.createTable()
+				_ = rds.deleteTable(*rds.tablename)
+				_ = rds.deleteTable(index_table)
+				_ = rds.deleteTable(stats_table)
+				_, err = rds.createTable(*rds.tablename)
+				_, err = rds.createTable(index_table)
+				_, err = rds.createTable(stats_table)
 			} else {
 				log.Printf("dynamo table named %s already existed. Skipping table creation.\n", *rds.tablename)
 			}
@@ -430,16 +443,16 @@ func (r dynamoDbCreator) Create(p *properties.Properties) (ycsb.DB, error) {
 	return rds, err
 }
 
-func (rds *dynamodbWrapper) deleteTable() error {
+func (rds *dynamodbWrapper) deleteTable(tableName string) error {
 	_, err := rds.client.DeleteTable(context.TODO(), &dynamodb.DeleteTableInput{
-		TableName: rds.tablename,
+		TableName: &tableName,
 	})
 	if err != nil {
 		log.Fatalf("Unable to delete table, %v", err)
 	}
 	waiter := dynamodb.NewTableNotExistsWaiter(rds.client)
 	err = waiter.Wait(context.TODO(), &dynamodb.DescribeTableInput{
-		TableName: rds.tablename}, 5*time.Minute)
+		TableName: &tableName}, 5*time.Minute)
 	if err != nil {
 		log.Fatalf("Wait for table deletion failed. Here's why: %v", err)
 	}
