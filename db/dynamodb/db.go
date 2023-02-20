@@ -14,6 +14,7 @@ import (
 	"github.com/pingcap/go-ycsb/pkg/prop"
 	"github.com/pingcap/go-ycsb/pkg/ycsb"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -28,6 +29,7 @@ type dynamodbWrapper struct {
 	consistentRead     bool
 	deleteAfterRun     bool
 	command            string
+	transactWriteUnits int64
 }
 
 func (r *dynamodbWrapper) Close() error {
@@ -126,17 +128,148 @@ func (r *dynamodbWrapper) Update(ctx context.Context, table string, key string, 
 }
 
 func (r *dynamodbWrapper) Insert(ctx context.Context, table string, key string, values map[string][]byte) (err error) {
-	values[r.primarykey] = []byte(key)
-	item, err := attributevalue.MarshalMap(values)
-	if err != nil {
-		panic(err)
+	var txnItems []types.TransactWriteItem
+
+	// put
+	Table := "obj_meta_general_x"
+	Table2 := "bucket_stats"
+
+	Item1 := map[string]string{
+		"bi":         "obj_meta_2f946334-0400-4aab-8974-9835201f3967yblbucket001%.99235.1.0",
+		"obj":        "1M_10w_NB1_2023012801n",
+		"attr_idtag": "OGI4NTI0YjktNzliZi00ZmNmLTg5M2UtYzYzNDY5ZWZjYWZiLjcwNjgyMi43ODc5Mzc=",
+		"head":       "CAPOAAAAGAAAADFNXzEwd19OQjFfMjAyMzAxMjgwMW4zNAAAAAAAAAAAAAcDeAAAAAFAQg8AAAAAACl91GNqvF8VIAAAAGJiZmRiYzkwZTBhZmQyNWVhYzgyNTIxN2FmNTdmNjMxAwAAAHlibAMAAAB5YmwYAAAAYXBwbGljYXRpb24vb2N0ZXQtc3RyZWFtQEIPAAAAAAAAAAAACAAAAFNUQU5EQVJEAAAAAAAAAAAAAQEKAAAAiP//////////AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+		"val":        "CAPOAAAAGAAAADFNXzEwd19OQjFfMjAyMzAxMjgwMW4zNAAAAAAAAAAAAAcDeAAAAAFAQg8AAAAAACl91GNqvF8VIAAAAGJiZmRiYzkwZTBhZmQyNWVhYzgyNTIxN2FmNTdmNjMxAwAAAHlibAMAAAB5YmwYAAAAYXBwbGljYXRpb24vb2N0ZXQtc3RyZWFtQEIPAAAAAAAAAAAACAAAAFNUQU5EQVJEAAAAAAAAAAAAAQEKAAAAiP//////////AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+		"ver":        "0",
+		"xid":        "532a4018-4c7c-442e-8e49-8b215dd2504b",
 	}
-	_, err = r.client.PutItem(context.TODO(),
-		&dynamodb.PutItemInput{
-			TableName: r.tablename, Item: item,
-		})
+
+	Item2 := map[string]string{
+		"bi":                 "obj_meta_2f946334-0400-4aab-8974-9835201f3967yblbucket001%.99235.1.0",
+		"category":           "rgw.main:STANDARD",
+		"actual_size":        "1000",
+		"total_size":         "1000",
+		"num_entries":        "1",
+		"total_size_rounded": "1000000",
+	}
+
+	Item1["obj"] = "1M_10w_NB1_2023012801n" + strconv.FormatInt(r.transactWriteUnits, 10)
+	// Item2["num_entries"] = strconv.FormatInt(r.transactWriteUnits, 10)
+	r.transactWriteUnits += 1
+	// log.Printf("r.transactWriteUnits: %d\n", r.transactWriteUnits)
+
+	MyUpdateExpression := "ADD actual_size :as, total_size :ts, num_entries :ne, total_size_rounded :tsr"
+
+	if strings.Compare("load", r.command) == 0 {
+		updateItem := &types.TransactWriteItem{
+			Update: &types.Update{
+				Key: map[string]types.AttributeValue{
+					"bi": &types.AttributeValueMemberS{
+						Value: Item2["bi"],
+					},
+					"category": &types.AttributeValueMemberS{
+						Value: Item2["category"],
+					},
+				},
+
+				TableName:        aws.String(Table2),
+				UpdateExpression: aws.String(MyUpdateExpression),
+				// ExpressionAttributeNames:  map[string]string{
+				//         ":as": "actual_size",
+				//         ":ts": "total_size",
+				//         ":ne": "num_entries",
+				//         ":tsr": "total_size_rounded",
+				// },
+				ExpressionAttributeValues: map[string]types.AttributeValue{
+					":as":  &types.AttributeValueMemberN{Value: "100000"},
+					":ts":  &types.AttributeValueMemberN{Value: "1000"},
+					":ne":  &types.AttributeValueMemberN{Value: "1"},
+					":tsr": &types.AttributeValueMemberN{Value: "10000"},
+				},
+			},
+		}
+
+		txnItems = append(txnItems, *updateItem)
+
+		keyInput, err := attributevalue.MarshalMap(Item1)
+		if err != nil {
+			log.Printf("Couldn't update item to table. Here's why: %v\n", err)
+			return err
+		}
+
+		putItem := &types.TransactWriteItem{
+			Put: &types.Put{
+				Item:                keyInput,
+				TableName:           aws.String(Table),
+				ConditionExpression: aws.String("attribute_not_exists(obj)"),
+			},
+		}
+
+		txnItems = append(txnItems, *putItem)
+	} else {
+		updateItem := &types.TransactWriteItem{
+			Update: &types.Update{
+				Key: map[string]types.AttributeValue{
+					"bi": &types.AttributeValueMemberS{
+						Value: Item2["bi"],
+					},
+					"category": &types.AttributeValueMemberS{
+						Value: Item2["category"],
+					},
+				},
+
+				TableName:        aws.String(Table2),
+				UpdateExpression: aws.String(MyUpdateExpression),
+				// ExpressionAttributeNames:  map[string]string{
+				//         ":as": "actual_size",
+				//         ":ts": "total_size",
+				//         ":ne": "num_entries",
+				//         ":tsr": "total_size_rounded",
+				// },
+				ExpressionAttributeValues: map[string]types.AttributeValue{
+					":as":  &types.AttributeValueMemberN{Value: "100000"},
+					":ts":  &types.AttributeValueMemberN{Value: "1000"},
+					":ne":  &types.AttributeValueMemberN{Value: "1"},
+					":tsr": &types.AttributeValueMemberN{Value: "10000"},
+				},
+			},
+		}
+
+		txnItems = append(txnItems, *updateItem)
+
+		// delete
+		deleteItem := &types.TransactWriteItem{
+			Delete: &types.Delete{
+				TableName: aws.String(Table),
+				Key: map[string]types.AttributeValue{
+					"bi": &types.AttributeValueMemberS{
+						Value: Item1["bi"],
+					},
+					"obj": &types.AttributeValueMemberS{
+						Value: Item1["obj"],
+					},
+				},
+			},
+		}
+
+		txnItems = append(txnItems, *deleteItem)
+	}
+
+	// deleteItem := &types.TransactWriteItem{
+	//     Delete: &types.Delete{
+	//         Key:       keyInput,
+	//         TableName: aws.String(table),
+	//     },
+	// }
+	defer timer("start")()
+
+	_, err = r.client.TransactWriteItems(context.TODO(), &dynamodb.TransactWriteItemsInput{
+		TransactItems: txnItems,
+	})
+
 	if err != nil {
-		log.Printf("Couldn't add item to table. Here's why: %v\n", err)
+		log.Printf("Couldn't determine existence of table. Here's why: %v\n", err)
+		return err
 	}
 	return
 }
@@ -216,6 +349,7 @@ func (r dynamoDbCreator) Create(p *properties.Properties) (ycsb.DB, error) {
 	rds.primarykeyPtr = aws.String(rds.primarykey)
 	rds.readCapacityUnits = p.GetInt64(readCapacityUnitsFieldName, readCapacityUnitsFieldNameDefault)
 	rds.writeCapacityUnits = p.GetInt64(writeCapacityUnitsFieldName, writeCapacityUnitsFieldNameDefault)
+	rds.transactWriteUnits = p.GetInt64(transactWriteUnitsFieldName, transactWriteUnitsFieldNameDefault)
 	rds.consistentRead = p.GetBool(consistentReadFieldName, consistentReadFieldNameDefault)
 	rds.deleteAfterRun = p.GetBool(deleteTableAfterRunFieldName, deleteTableAfterRunFieldNameDefault)
 	endpoint := p.GetString(endpointField, endpointFieldDefault)
@@ -288,6 +422,13 @@ func (rds *dynamodbWrapper) deleteTable() error {
 	return err
 }
 
+func timer(name string) func() {
+	start := time.Now()
+	return func() {
+		fmt.Printf("%s took %v\n", name, time.Since(start))
+	}
+}
+
 const (
 	tablename                          = "dynamodb.tablename"
 	tablenameDefault                   = "usertable"
@@ -310,6 +451,9 @@ const (
 	consistentReadFieldNameDefault      = false
 	deleteTableAfterRunFieldName        = "dynamodb.delete.after.run.stage"
 	deleteTableAfterRunFieldNameDefault = false
+	// Control obj start subscript
+	transactWriteUnitsFieldName        = "dynamodb.twc.units"
+	transactWriteUnitsFieldNameDefault = 1
 )
 
 func init() {
