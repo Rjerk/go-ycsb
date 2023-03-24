@@ -22,16 +22,19 @@
 #   Default data size: 1 KB records (10 fields, 100 bytes each, plus key)
 #   Request distribution: zipfian
 
-recordcount=1000
-operationcount=1000
+recordcount=1000000
+operationcount=1000000
 workload=core
+fieldcount=5
+fieldlength=100
 
 readallfields=true
 
-readproportion=0.5
-updateproportion=0.5
+readproportion=1
+updateproportion=0
 scanproportion=0
 insertproportion=0
 
-requestdistribution=uniform
+requestdistribution=hotspot
 
+dynamodb.endpoint=http://100.71.8.129:3833

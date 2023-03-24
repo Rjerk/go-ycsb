@@ -1,4 +1,4 @@
-FROM golang:1.13.6-stretch
+FROM golang:1.18.3-stretch
 
 ENV GOPATH /go
 
@@ -11,27 +11,29 @@ RUN apt-get update \
                 net-tools 
 
 RUN cd / \
-    && wget https://www.foundationdb.org/downloads/6.2.11/ubuntu/installers/foundationdb-clients_6.2.11-1_amd64.deb \
-    && dpkg -i foundationdb-clients_6.2.11-1_amd64.deb
+    && wget https://github.com/apple/foundationdb/releases/download/7.1.27/foundationdb-clients_7.1.27-1_amd64.deb \
+    && dpkg -i foundationdb-clients_7.1.27-1_amd64.deb
 
 ADD . /go/src/github.com/pingcap/go-ycsb
 
 WORKDIR /go/src/github.com/pingcap/go-ycsb
 
-RUN GO111MODULE=on go build -tags "foundationdb" -o /go-ycsb ./cmd/*
+# RUN GO111MODULE=on go build -tags "foundationdb dynamodb" -o /go-ycsb ./cmd/* && ls /go/*
 
 FROM ubuntu:18.04
 
 RUN apt-get update \
  && apt-get install -y dpkg
 
-COPY --from=0 /foundationdb-clients_6.2.11-1_amd64.deb /foundationdb-clients_6.2.11-1_amd64.deb
-RUN dpkg -i foundationdb-clients_6.2.11-1_amd64.deb
+COPY --from=0 /foundationdb-clients_7.1.27-1_amd64.deb /foundationdb-clients_7.1.27-1_amd64.deb
+RUN dpkg -i foundationdb-clients_7.1.27-1_amd64.deb && rm -f foundationdb-clients_7.1.27-1_amd64.deb
 
-COPY --from=0 /go-ycsb /go-ycsb
-
-ADD workloads /workloads
+# COPY --from=0 /go-ycsb /go-ycsb
+COPY ./bin/go-ycsb /go-ycsb
 
 EXPOSE 6060
+
+ENV AWS_ACCESS_KEY_ID=DUMMYIDEXAMPLE
+ENV AWS_SECRET_ACCESS_KEY=DUMMYEXAMPLEKEY
 
 ENTRYPOINT [ "/go-ycsb" ]
