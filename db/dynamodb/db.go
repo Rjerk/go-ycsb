@@ -62,6 +62,7 @@ func (r *dynamodbWrapper) Read(ctx context.Context, table string, key string, fi
 		TableName:      r.tablename,
 		ConsistentRead: aws.Bool(r.consistentRead),
 	})
+
 	if err != nil {
 		log.Printf("Couldn't get info about %v. Here's why: %v\n", key, err)
 	} else {
@@ -77,8 +78,15 @@ func (r *dynamodbWrapper) Read(ctx context.Context, table string, key string, fi
 // GetKey returns the composite primary key of the document in a format that can be
 // sent to DynamoDB.
 func (r *dynamodbWrapper) GetKey(key string) map[string]types.AttributeValue {
-	return map[string]types.AttributeValue{
-		r.primarykey: &types.AttributeValueMemberB{Value: []byte(key)},
+	if r.primaryKeyType == "HASH_AND_RANGE" {
+		return map[string]types.AttributeValue{
+			r.primarykey: &types.AttributeValueMemberB{Value: []byte(r.primarykey)},
+			r.hashKey: &types.AttributeValueMemberB{Value: []byte(key)},
+		}
+	} else {
+		return map[string]types.AttributeValue{
+			r.primarykey: &types.AttributeValueMemberB{Value: []byte(key)},
+		}
 	}
 }
 
@@ -133,32 +141,20 @@ func (r *dynamodbWrapper) Insert(ctx context.Context, table string, key string, 
 	if r.primaryKeyType == "HASH_AND_RANGE" {
 		values[r.primarykey] = []byte(r.primarykey)
 		values[r.hashKey] = []byte(key)
-
-		item, err := attributevalue.MarshalMap(values)
-		if err != nil {
-			panic(err)
-		}
-		_, err = r.client.PutItem(context.TODO(),
-			&dynamodb.PutItemInput{
-				TableName: r.tablename, Item: item,
-			})
-		if err != nil {
-			log.Printf("Couldn't add item to table. Here's why: %v\n", err)
-		}
 	} else {
 		values[r.primarykey] = []byte(key)
+	}
 
-		item, err := attributevalue.MarshalMap(values)
-		if err != nil {
-			panic(err)
-		}
-		_, err = r.client.PutItem(context.TODO(),
-			&dynamodb.PutItemInput{
-				TableName: r.tablename, Item: item,
-			})
-		if err != nil {
-			log.Printf("Couldn't add item to table. Here's why: %v\n", err)
-		}
+	item, err := attributevalue.MarshalMap(values)
+	if err != nil {
+		panic(err)
+	}
+	_, err = r.client.PutItem(context.TODO(),
+		&dynamodb.PutItemInput{
+			TableName: r.tablename, Item: item,
+		})
+	if err != nil {
+		log.Printf("Couldn't add item to table. Here's why: %v\n", err)
 	}
 	return
 }
