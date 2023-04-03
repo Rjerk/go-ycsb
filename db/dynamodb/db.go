@@ -4,6 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
+	"strings"
+	"time"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -13,9 +17,6 @@ import (
 	"github.com/magiconair/properties"
 	"github.com/pingcap/go-ycsb/pkg/prop"
 	"github.com/pingcap/go-ycsb/pkg/ycsb"
-	"log"
-	"strings"
-	"time"
 )
 
 type dynamodbWrapper struct {
@@ -26,6 +27,7 @@ type dynamodbWrapper struct {
 	primarykeyPtr      *string
 	hashKey            string
 	hashKeyPtr         *string
+	hashKeyValue       string
 	readCapacityUnits  int64
 	writeCapacityUnits int64
 	consistentRead     bool
@@ -80,8 +82,11 @@ func (r *dynamodbWrapper) Read(ctx context.Context, table string, key string, fi
 func (r *dynamodbWrapper) GetKey(key string) map[string]types.AttributeValue {
 	if r.primaryKeyType == "HASH_AND_RANGE" {
 		return map[string]types.AttributeValue{
-			r.primarykey: &types.AttributeValueMemberB{Value: []byte(r.primarykey)},
-			r.hashKey: &types.AttributeValueMemberB{Value: []byte(key)},
+			// If the primary key type is HASH_AND_RANGE, then what has been put
+			// into the attributes map above is the range key part of the primary
+			// key, we still need to put in the hash key part here.
+			r.hashKey:    &types.AttributeValueMemberB{Value: []byte(r.hashKeyValue)},
+			r.primarykey: &types.AttributeValueMemberB{Value: []byte(key)},
 		}
 	} else {
 		return map[string]types.AttributeValue{
@@ -139,8 +144,8 @@ func (r *dynamodbWrapper) Update(ctx context.Context, table string, key string, 
 func (r *dynamodbWrapper) Insert(ctx context.Context, table string, key string, values map[string][]byte) (err error) {
 
 	if r.primaryKeyType == "HASH_AND_RANGE" {
-		values[r.primarykey] = []byte(r.primarykey)
-		values[r.hashKey] = []byte(key)
+		values[r.hashKey] = []byte(r.hashKeyValue)
+		values[r.primarykey] = []byte(key)
 	} else {
 		values[r.primarykey] = []byte(key)
 	}
@@ -278,6 +283,7 @@ func (r dynamoDbCreator) Create(p *properties.Properties) (ycsb.DB, error) {
 	rds.primarykeyPtr = aws.String(rds.primarykey)
 	rds.hashKey = p.GetString(hashKeyFieldName, hashKeyFieldNameDefault)
 	rds.hashKeyPtr = aws.String(rds.hashKey)
+	rds.hashKeyValue = p.GetString(hashKeyValue, hashKeyValueDefault)
 	rds.readCapacityUnits = p.GetInt64(readCapacityUnitsFieldName, readCapacityUnitsFieldNameDefault)
 	rds.writeCapacityUnits = p.GetInt64(writeCapacityUnitsFieldName, writeCapacityUnitsFieldNameDefault)
 	rds.consistentRead = p.GetBool(consistentReadFieldName, consistentReadFieldNameDefault)
@@ -359,12 +365,14 @@ const (
 	// you have setup for the test table. There are two choices:
 	// - HASH (default)
 	// - HASH_AND_RANGE
-	primaryKeyTypeFieldName            = "dynamodb.primaryKeyType"
+	primaryKeyTypeFieldName            = "dynamodb.primarykey.type"
 	primaryKeyTypeFieldNameDefault     = "HASH"
 	primaryKeyFieldName                = "dynamodb.primarykey"
 	primaryKeyFieldNameDefault         = "_key"
 	hashKeyFieldName                   = "dynamodb.hashkey"
-	hashKeyFieldNameDefault            = "hash_key"
+	hashKeyFieldNameDefault            = "hashkey"
+	hashKeyValue                       = "dynamodb.hashkey.value"
+	hashKeyValueDefault                = "hash"
 	readCapacityUnitsFieldName         = "dynamodb.rc.units"
 	readCapacityUnitsFieldNameDefault  = 10
 	writeCapacityUnitsFieldName        = "dynamodb.wc.units"
