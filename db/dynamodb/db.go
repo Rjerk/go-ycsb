@@ -21,8 +21,11 @@ import (
 type dynamodbWrapper struct {
 	client             *dynamodb.Client
 	tablename          *string
+	primaryKeyType     string
 	primarykey         string
 	primarykeyPtr      *string
+	hashKey            string
+	hashKeyPtr         *string
 	readCapacityUnits  int64
 	writeCapacityUnits int64
 	consistentRead     bool
@@ -126,17 +129,36 @@ func (r *dynamodbWrapper) Update(ctx context.Context, table string, key string, 
 }
 
 func (r *dynamodbWrapper) Insert(ctx context.Context, table string, key string, values map[string][]byte) (err error) {
-	values[r.primarykey] = []byte(key)
-	item, err := attributevalue.MarshalMap(values)
-	if err != nil {
-		panic(err)
-	}
-	_, err = r.client.PutItem(context.TODO(),
-		&dynamodb.PutItemInput{
-			TableName: r.tablename, Item: item,
-		})
-	if err != nil {
-		log.Printf("Couldn't add item to table. Here's why: %v\n", err)
+
+	if r.primaryKeyType == "HASH_AND_RANGE" {
+		values[r.primarykey] = []byte(r.primarykey)
+		values[r.hashKey] = []byte(key)
+
+		item, err := attributevalue.MarshalMap(values)
+		if err != nil {
+			panic(err)
+		}
+		_, err = r.client.PutItem(context.TODO(),
+			&dynamodb.PutItemInput{
+				TableName: r.tablename, Item: item,
+			})
+		if err != nil {
+			log.Printf("Couldn't add item to table. Here's why: %v\n", err)
+		}
+	} else {
+		values[r.primarykey] = []byte(key)
+
+		item, err := attributevalue.MarshalMap(values)
+		if err != nil {
+			panic(err)
+		}
+		_, err = r.client.PutItem(context.TODO(),
+			&dynamodb.PutItemInput{
+				TableName: r.tablename, Item: item,
+			})
+		if err != nil {
+			log.Printf("Couldn't add item to table. Here's why: %v\n", err)
+		}
 	}
 	return
 }
@@ -174,36 +196,79 @@ func (r *dynamodbWrapper) tableExists() (bool, error) {
 // DynamoDB before it returns.
 func (r *dynamodbWrapper) createTable() (*types.TableDescription, error) {
 	var tableDesc *types.TableDescription
-	table, err := r.client.CreateTable(context.TODO(), &dynamodb.CreateTableInput{
-		AttributeDefinitions: []types.AttributeDefinition{{
-			AttributeName: r.primarykeyPtr,
-			AttributeType: types.ScalarAttributeTypeB,
-		}},
-		KeySchema: []types.KeySchemaElement{
-			{
-				AttributeName: r.primarykeyPtr,
-				KeyType:       types.KeyTypeHash,
+	if r.primaryKeyType == "HASH_AND_RANGE" {
+		table, err := r.client.CreateTable(context.TODO(), &dynamodb.CreateTableInput{
+			AttributeDefinitions: []types.AttributeDefinition{
+				{
+					AttributeName: r.primarykeyPtr,
+					AttributeType: types.ScalarAttributeTypeB,
+				},
+				{
+					AttributeName: r.hashKeyPtr,
+					AttributeType: types.ScalarAttributeTypeB,
+				},
 			},
-		},
-		TableName: r.tablename,
-		ProvisionedThroughput: &types.ProvisionedThroughput{
-			ReadCapacityUnits:  aws.Int64(r.readCapacityUnits),
-			WriteCapacityUnits: aws.Int64(r.writeCapacityUnits),
-		},
-	})
-	if err != nil {
-		log.Printf("Couldn't create table %v. Here's why: %v\n", *r.tablename, err)
-	} else {
-		log.Printf("Waiting for table to be available.\n")
-		waiter := dynamodb.NewTableExistsWaiter(r.client)
-		err = waiter.Wait(context.TODO(), &dynamodb.DescribeTableInput{
-			TableName: r.tablename}, 5*time.Minute)
+			KeySchema: []types.KeySchemaElement{
+				{
+					AttributeName: r.primarykeyPtr,
+					KeyType:       types.KeyTypeHash,
+				},
+				{
+					AttributeName: r.hashKeyPtr,
+					KeyType:       types.KeyTypeRange,
+				},
+			},
+			TableName: r.tablename,
+			ProvisionedThroughput: &types.ProvisionedThroughput{
+				ReadCapacityUnits:  aws.Int64(r.readCapacityUnits),
+				WriteCapacityUnits: aws.Int64(r.writeCapacityUnits),
+			},
+		})
 		if err != nil {
-			log.Printf("Wait for table exists failed. Here's why: %v\n", err)
+			log.Printf("Couldn't create table %v. Here's why: %v\n", *r.tablename, err)
+		} else {
+			log.Printf("Waiting for table to be available.\n")
+			waiter := dynamodb.NewTableExistsWaiter(r.client)
+			err = waiter.Wait(context.TODO(), &dynamodb.DescribeTableInput{
+				TableName: r.tablename}, 5*time.Minute)
+			if err != nil {
+				log.Printf("Wait for table exists failed. Here's why: %v\n", err)
+			}
+			tableDesc = table.TableDescription
 		}
-		tableDesc = table.TableDescription
+		return tableDesc, err
+	} else {
+		table, err := r.client.CreateTable(context.TODO(), &dynamodb.CreateTableInput{
+			AttributeDefinitions: []types.AttributeDefinition{{
+				AttributeName: r.primarykeyPtr,
+				AttributeType: types.ScalarAttributeTypeB,
+			}},
+			KeySchema: []types.KeySchemaElement{
+				{
+					AttributeName: r.primarykeyPtr,
+					KeyType:       types.KeyTypeHash,
+				},
+			},
+			TableName: r.tablename,
+			ProvisionedThroughput: &types.ProvisionedThroughput{
+				ReadCapacityUnits:  aws.Int64(r.readCapacityUnits),
+				WriteCapacityUnits: aws.Int64(r.writeCapacityUnits),
+			},
+		})
+		if err != nil {
+			log.Printf("Couldn't create table %v. Here's why: %v\n", *r.tablename, err)
+		} else {
+			log.Printf("Waiting for table to be available.\n")
+			waiter := dynamodb.NewTableExistsWaiter(r.client)
+			err = waiter.Wait(context.TODO(), &dynamodb.DescribeTableInput{
+				TableName: r.tablename}, 5*time.Minute)
+			if err != nil {
+				log.Printf("Wait for table exists failed. Here's why: %v\n", err)
+			}
+			tableDesc = table.TableDescription
+		}
+		return tableDesc, err
 	}
-	return tableDesc, err
 }
 
 func (r dynamoDbCreator) Create(p *properties.Properties) (ycsb.DB, error) {
@@ -212,8 +277,11 @@ func (r dynamoDbCreator) Create(p *properties.Properties) (ycsb.DB, error) {
 	rds.tablename = aws.String(p.GetString(tablename, tablenameDefault))
 	// other than the primary key, you do not need to define
 	// any extra attributes or data types when you create a table.
+	rds.primaryKeyType = p.GetString(primaryKeyTypeFieldName, primaryKeyTypeFieldNameDefault)
 	rds.primarykey = p.GetString(primaryKeyFieldName, primaryKeyFieldNameDefault)
 	rds.primarykeyPtr = aws.String(rds.primarykey)
+	rds.hashKey = p.GetString(hashKeyFieldName, hashKeyFieldNameDefault)
+	rds.hashKeyPtr = aws.String(rds.hashKey)
 	rds.readCapacityUnits = p.GetInt64(readCapacityUnitsFieldName, readCapacityUnitsFieldNameDefault)
 	rds.writeCapacityUnits = p.GetInt64(writeCapacityUnitsFieldName, writeCapacityUnitsFieldNameDefault)
 	rds.consistentRead = p.GetBool(consistentReadFieldName, consistentReadFieldNameDefault)
@@ -289,10 +357,18 @@ func (rds *dynamodbWrapper) deleteTable() error {
 }
 
 const (
-	tablename                          = "dynamodb.tablename"
-	tablenameDefault                   = "ycsb"
+	tablename        = "dynamodb.tablename"
+	tablenameDefault = "ycsb"
+	// The property "primaryKeyType" below specifies the type of primary key
+	// you have setup for the test table. There are two choices:
+	// - HASH (default)
+	// - HASH_AND_RANGE
+	primaryKeyTypeFieldName            = "dynamodb.primaryKeyType"
+	primaryKeyTypeFieldNameDefault     = "HASH"
 	primaryKeyFieldName                = "dynamodb.primarykey"
 	primaryKeyFieldNameDefault         = "_key"
+	hashKeyFieldName                   = "dynamodb.hashkey"
+	hashKeyFieldNameDefault            = "hash_key"
 	readCapacityUnitsFieldName         = "dynamodb.rc.units"
 	readCapacityUnitsFieldNameDefault  = 10
 	writeCapacityUnitsFieldName        = "dynamodb.wc.units"
