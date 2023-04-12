@@ -38,7 +38,7 @@ type fDB struct {
 }
 
 func createDB(p *properties.Properties) (ycsb.DB, error) {
-	clusterFile := p.GetString(fdbClusterFile, "")
+	clusterFile := p.GetString(fdbClusterFile, "/etc/foundationdb/fdb.cluster")
 	database := p.GetString(fdbDatabase, "DB")
 	apiVersion := p.GetInt(fdbAPIVersion, 510)
 

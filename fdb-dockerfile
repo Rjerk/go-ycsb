@@ -11,8 +11,8 @@ RUN apt-get update \
                 net-tools 
 
 RUN cd / \
-    && wget https://github.com/apple/foundationdb/releases/download/7.1.27/foundationdb-clients_7.1.27-1_amd64.deb \
-    && dpkg -i foundationdb-clients_7.1.27-1_amd64.deb
+    && wget https://github.com/apple/foundationdb/releases/download/7.2.5/foundationdb-clients_7.2.5-1_amd64.deb \
+    && dpkg -i foundationdb-clients_7.2.5-1_amd64.deb
 
 ADD . /go/src/github.com/pingcap/go-ycsb
 
@@ -25,8 +25,9 @@ FROM ubuntu:18.04
 RUN apt-get update \
  && apt-get install -y dpkg
 
-COPY --from=0 /foundationdb-clients_7.1.27-1_amd64.deb /foundationdb-clients_7.1.27-1_amd64.deb
-RUN dpkg -i foundationdb-clients_7.1.27-1_amd64.deb && rm -f foundationdb-clients_7.1.27-1_amd64.deb
+COPY --from=0 /foundationdb-clients_7.2.5-1_amd64.deb /foundationdb-clients_7.2.5-1_amd64.deb
+RUN dpkg -i foundationdb-clients_7.2.5-1_amd64.deb && rm -f foundationdb-clients_7.2.5-1_amd64.deb \
+ && rm -rf /usr/bin/dr_agent /usr/bin/fdbbackup /usr/bin/fdbdr /usr/bin/fdbrestore /usr/lib/foundationdb/backup_agent
 
 # COPY --from=0 /go-ycsb /go-ycsb
 COPY ./bin/go-ycsb /go-ycsb
