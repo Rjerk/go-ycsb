@@ -14,6 +14,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/aws/aws-sdk-go-v2/aws/ratelimit"
+	"github.com/aws/aws-sdk-go-v2/aws/retry"
 	"github.com/magiconair/properties"
 	"github.com/pingcap/go-ycsb/pkg/prop"
 	"github.com/pingcap/go-ycsb/pkg/ycsb"
@@ -297,13 +299,19 @@ func (r dynamoDbCreator) Create(p *properties.Properties) (ycsb.DB, error) {
 		log.Printf("given you're using dynamodb local endpoint you need to specify -p %s='localhost'. Ignoring %s and enforcing -p %s='localhost'\n", regionField, region, regionField)
 		region = "localhost"
 	}
+	// fix: failed to get rate limit token, retry quota exceeded, 0 available, 5 requested
+	tokenRateLimiter := config.WithRetryer(func() aws.Retryer {
+		return retry.NewStandard(func(so *retry.StandardOptions) {
+			so.RateLimiter = ratelimit.NewTokenRateLimit(10000000)
+		})
+	})
 	if strings.Compare(endpoint, endpointFieldDefault) == 0 {
 		if strings.Compare(region, regionFieldDefault) != 0 {
 			// if endpoint is default but we have region
-			cfg, err = config.LoadDefaultConfig(context.TODO(), config.WithRegion(region))
+			cfg, err = config.LoadDefaultConfig(context.TODO(), config.WithRegion(region), tokenRateLimiter)
 		} else {
 			// if both endpoint and region are default
-			cfg, err = config.LoadDefaultConfig(context.TODO())
+			cfg, err = config.LoadDefaultConfig(context.TODO(), tokenRateLimiter)
 		}
 	} else {
 		cfg, err = config.LoadDefaultConfig(context.TODO(),
@@ -312,6 +320,7 @@ func (r dynamoDbCreator) Create(p *properties.Properties) (ycsb.DB, error) {
 				func(service, region string) (aws.Endpoint, error) {
 					return aws.Endpoint{URL: endpoint, SigningRegion: region}, nil
 				})),
+				tokenRateLimiter,
 		)
 	}
 	if err != nil {
