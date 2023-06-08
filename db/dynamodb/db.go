@@ -60,6 +60,7 @@ func (r *dynamodbWrapper) CleanupThread(_ context.Context) {
 
 func (r *dynamodbWrapper) Read(ctx context.Context, table string, key string, fields []string) (data map[string][]byte, err error) {
 	data = make(map[string][]byte, len(fields))
+	// log.Printf("Read item key: %v\n", key)
 
 	response, err := r.client.GetItem(context.TODO(), &dynamodb.GetItemInput{
 		Key:            r.GetKey(key),
@@ -71,6 +72,8 @@ func (r *dynamodbWrapper) Read(ctx context.Context, table string, key string, fi
 		log.Printf("Couldn't get info about %v. Here's why: %v\n", key, err)
 	} else {
 		err = attributevalue.UnmarshalMap(response.Item, &data)
+		// log.Printf("Read item response: %v\n", response.Item)
+		// 校验读到的Item
 		if err != nil {
 			log.Printf("Couldn't unmarshal response. Here's why: %v\n", err)
 		}
@@ -167,6 +170,7 @@ func (r *dynamodbWrapper) Insert(ctx context.Context, table string, key string, 
 }
 
 func (r *dynamodbWrapper) Delete(ctx context.Context, table string, key string) error {
+	// log.Printf("Delete item key: %v\n", key)
 	_, err := r.client.DeleteItem(context.TODO(), &dynamodb.DeleteItemInput{
 		TableName: r.tablename,
 		Key:       r.GetKey(key),

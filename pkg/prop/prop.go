@@ -58,6 +58,8 @@ const (
 	DataIntegrityDefault             = false
 	ReadProportion                   = "readproportion"
 	ReadProportionDefault            = float64(0.95)
+	DeleteProportion                 = "deleteproportion"
+	DeleteProportionDefault          = float64(0.0)
 	UpdateProportion                 = "updateproportion"
 	UpdateProportionDefault          = float64(0.05)
 	InsertProportion                 = "insertproportion"
