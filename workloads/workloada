@@ -31,6 +31,7 @@ fieldlength=100
 readallfields=true
 
 readproportion=1
+deleteproportion=0
 updateproportion=0
 scanproportion=0
 insertproportion=0

@@ -47,6 +47,7 @@ type operationType int64
 const (
 	read operationType = iota + 1
 	update
+	delete
 	insert
 	scan
 	readModifyWrite
@@ -104,6 +105,7 @@ func getFieldLengthGenerator(p *properties.Properties) ycsb.Generator {
 
 func createOperationGenerator(p *properties.Properties) *generator.Discrete {
 	readProportion := p.GetFloat64(prop.ReadProportion, prop.ReadProportionDefault)
+	deleteProportion := p.GetFloat64(prop.DeleteProportion, prop.DeleteProportionDefault)
 	updateProportion := p.GetFloat64(prop.UpdateProportion, prop.UpdateProportionDefault)
 	insertProportion := p.GetFloat64(prop.InsertProportion, prop.InsertProportionDefault)
 	scanProportion := p.GetFloat64(prop.ScanProportion, prop.ScanProportionDefault)
@@ -112,6 +114,10 @@ func createOperationGenerator(p *properties.Properties) *generator.Discrete {
 	operationChooser := generator.NewDiscrete()
 	if readProportion > 0 {
 		operationChooser.Add(readProportion, int64(read))
+	}
+
+	if deleteProportion > 0 {
+		operationChooser.Add(deleteProportion, int64(delete))
 	}
 
 	if updateProportion > 0 {
@@ -364,6 +370,8 @@ func (c *core) DoTransaction(ctx context.Context, db ycsb.DB) error {
 	switch operation {
 	case read:
 		return c.doTransactionRead(ctx, db, state)
+	case delete:
+		return c.doTransactionDelete(ctx, db, state)
 	case update:
 		return c.doTransactionUpdate(ctx, db, state)
 	case insert:
@@ -433,6 +441,18 @@ func (c *core) doTransactionRead(ctx context.Context, db ycsb.DB, state *coreSta
 
 	if c.dataIntegrity {
 		c.verifyRow(state, keyName, values)
+	}
+
+	return nil
+}
+
+func (c *core) doTransactionDelete(ctx context.Context, db ycsb.DB, state *coreState) error {
+	keyNum := c.nextKeyNum(state)
+	keyName := c.buildKeyName(keyNum)
+
+	err := db.Delete(ctx, c.table, keyName)
+	if err != nil {
+		return err
 	}
 
 	return nil
