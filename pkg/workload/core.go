@@ -23,6 +23,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	// "log"
 
 	"github.com/magiconair/properties"
 	"github.com/pingcap/go-ycsb/pkg/generator"
@@ -251,6 +252,7 @@ func (c *core) buildDeterministicValue(state *coreState, key string, fieldKey st
 }
 
 func (c *core) verifyRow(state *coreState, key string, values map[string][]byte) {
+	// log.Printf("values: %q\n", values)
 	if len(values) == 0 {
 		// null data here, need panic?
 		return
@@ -258,6 +260,7 @@ func (c *core) verifyRow(state *coreState, key string, values map[string][]byte)
 
 	for fieldKey, value := range values {
 		expected := c.buildDeterministicValue(state, key, fieldKey)
+		// log.Printf("value: %q\n", value)
 		if !bytes.Equal(expected, value) {
 			util.Fatalf("unexpected deterministic value, expect %q, but got %q", expected, value)
 		}
