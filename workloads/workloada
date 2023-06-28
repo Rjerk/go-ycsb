@@ -29,6 +29,7 @@ fieldcount=5
 fieldlength=100
 
 readallfields=true
+dataintegrity=true
 
 readproportion=1
 deleteproportion=0
