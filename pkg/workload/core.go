@@ -17,13 +17,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log"
 	"math"
 	"math/rand"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-	// "log"
 
 	"github.com/magiconair/properties"
 	"github.com/pingcap/go-ycsb/pkg/generator"
@@ -255,12 +255,12 @@ func (c *core) verifyRow(state *coreState, key string, values map[string][]byte)
 	// log.Printf("values: %q\n", values)
 	if len(values) == 0 {
 		// null data here, need panic?
-		return
+		log.Printf("Panic:The response of key %q is null!\n", key)
+		// return
 	}
 
 	for fieldKey, value := range values {
 		expected := c.buildDeterministicValue(state, key, fieldKey)
-		// log.Printf("value: %q\n", value)
 		if !bytes.Equal(expected, value) {
 			util.Fatalf("unexpected deterministic value, expect %q, but got %q", expected, value)
 		}
@@ -424,9 +424,20 @@ func (c *core) nextKeyNum(state *coreState) int64 {
 	return keyNum
 }
 
+func (c *core) nextSequenceKeyNum(state *coreState) int64 {
+	r := state.r
+
+	return c.keySequence.Next(r)
+}
+
 func (c *core) doTransactionRead(ctx context.Context, db ycsb.DB, state *coreState) error {
 	r := state.r
-	keyNum := c.nextKeyNum(state)
+	var keyNum = c.nextKeyNum(state)
+
+	if c.dataIntegrity {
+		keyNum = c.nextSequenceKeyNum(state)
+	}
+
 	keyName := c.buildKeyName(keyNum)
 
 	var fields []string
@@ -450,7 +461,7 @@ func (c *core) doTransactionRead(ctx context.Context, db ycsb.DB, state *coreSta
 }
 
 func (c *core) doTransactionDelete(ctx context.Context, db ycsb.DB, state *coreState) error {
-	keyNum := c.nextKeyNum(state)
+	keyNum := c.nextSequenceKeyNum(state)
 	keyName := c.buildKeyName(keyNum)
 
 	err := db.Delete(ctx, c.table, keyName)
