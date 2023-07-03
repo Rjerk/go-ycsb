@@ -9,13 +9,13 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws/ratelimit"
+	"github.com/aws/aws-sdk-go-v2/aws/retry"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	"github.com/aws/aws-sdk-go-v2/aws/ratelimit"
-	"github.com/aws/aws-sdk-go-v2/aws/retry"
 	"github.com/magiconair/properties"
 	"github.com/pingcap/go-ycsb/pkg/prop"
 	"github.com/pingcap/go-ycsb/pkg/ycsb"
@@ -60,10 +60,6 @@ func (r *dynamodbWrapper) CleanupThread(_ context.Context) {
 
 func (r *dynamodbWrapper) Read(ctx context.Context, table string, key string, fields []string) (data map[string][]byte, err error) {
 	data = make(map[string][]byte, len(fields))
-	// log.Printf("Read item key: %v\n", key)
-	// log.Printf("Read item primarykey: %v\n", r.primarykey)
-	// log.Printf("Read item key fields: %v\n", fields)
-	// log.Printf("data: %v\n", data)
 
 	response, err := r.client.GetItem(context.TODO(), &dynamodb.GetItemInput{
 		Key:            r.GetKey(key),
@@ -75,8 +71,6 @@ func (r *dynamodbWrapper) Read(ctx context.Context, table string, key string, fi
 		log.Printf("Couldn't get info about %v. Here's why: %v\n", key, err)
 	} else {
 		err = attributevalue.UnmarshalMap(response.Item, &data)
-		// log.Printf("Read item response: %v\n", response.Item)
-		// log.Printf("data: %q\n", data)
 		if err != nil {
 			log.Printf("Couldn't unmarshal response. Here's why: %v\n", err)
 		}
@@ -128,7 +122,7 @@ func (r *dynamodbWrapper) Scan(ctx context.Context, table string, startKey strin
 
 	result = append(result, data...)
 
-	return data, nil
+	return
 }
 
 func (r *dynamodbWrapper) Update(ctx context.Context, table string, key string, values map[string][]byte) (err error) {
@@ -175,7 +169,6 @@ func (r *dynamodbWrapper) Insert(ctx context.Context, table string, key string, 
 }
 
 func (r *dynamodbWrapper) Delete(ctx context.Context, table string, key string) error {
-	// log.Printf("Delete item key: %v\n", key)
 	_, err := r.client.DeleteItem(context.TODO(), &dynamodb.DeleteItemInput{
 		TableName: r.tablename,
 		Key:       r.GetKey(key),
@@ -329,7 +322,7 @@ func (r dynamoDbCreator) Create(p *properties.Properties) (ycsb.DB, error) {
 				func(service, region string) (aws.Endpoint, error) {
 					return aws.Endpoint{URL: endpoint, SigningRegion: region}, nil
 				})),
-				tokenRateLimiter,
+			tokenRateLimiter,
 		)
 	}
 	if err != nil {
