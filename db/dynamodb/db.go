@@ -160,7 +160,10 @@ func (r *dynamodbWrapper) Insert(ctx context.Context, table string, key string, 
 	}
 	_, err = r.client.PutItem(context.TODO(),
 		&dynamodb.PutItemInput{
-			TableName: r.tablename, Item: item,
+			TableName: r.tablename,
+			Item:      item,
+			// ConditionExpression: aws.String("attribute_not_exists(obj)"),
+			ReturnValues: "ALL_OLD",
 		})
 	if err != nil {
 		log.Printf("Couldn't add item to table. Here's why: %v\n", err)

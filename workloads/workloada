@@ -36,5 +36,6 @@ deleteproportion=0
 updateproportion=0
 scanproportion=0
 insertproportion=0
+readmodifywriteproportion=0
 
 requestdistribution=uniform
