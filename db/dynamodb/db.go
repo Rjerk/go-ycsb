@@ -22,19 +22,21 @@ import (
 )
 
 type dynamodbWrapper struct {
-	client             *dynamodb.Client
-	tablename          *string
-	primaryKeyType     string
-	primarykey         string
-	primarykeyPtr      *string
-	hashKey            string
-	hashKeyPtr         *string
-	hashKeyValue       string
-	readCapacityUnits  int64
-	writeCapacityUnits int64
-	consistentRead     bool
-	deleteAfterRun     bool
-	command            string
+	client              *dynamodb.Client
+	tablename           *string
+	primaryKeyType      string
+	primarykey          string
+	primarykeyPtr       *string
+	hashKey             string
+	hashKeyPtr          *string
+	hashKeyValue        string
+	readCapacityUnits   int64
+	writeCapacityUnits  int64
+	consistentRead      bool
+	deleteAfterRun      bool
+	command             string
+	timeoutMilliseconds int64
+	maxRetry            int
 }
 
 func (r *dynamodbWrapper) Close() error {
@@ -61,7 +63,11 @@ func (r *dynamodbWrapper) CleanupThread(_ context.Context) {
 func (r *dynamodbWrapper) Read(ctx context.Context, table string, key string, fields []string) (data map[string][]byte, err error) {
 	data = make(map[string][]byte, len(fields))
 
-	response, err := r.client.GetItem(context.TODO(), &dynamodb.GetItemInput{
+	// create a new context from the previous ctx with a timeout, e.g. 5 milliseconds
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(r.timeoutMilliseconds)*time.Millisecond)
+	defer cancel()
+
+	response, err := r.client.GetItem(ctx, &dynamodb.GetItemInput{
 		Key:            r.GetKey(key),
 		TableName:      r.tablename,
 		ConsistentRead: aws.Bool(r.consistentRead),
@@ -132,7 +138,11 @@ func (r *dynamodbWrapper) Update(ctx context.Context, table string, key string, 
 	}
 	expr, err := expression.NewBuilder().WithUpdate(upd).Build()
 
-	_, err = r.client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
+	// create a new context from the previous ctx with a timeout, e.g. 5 milliseconds
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(r.timeoutMilliseconds)*time.Millisecond)
+	defer cancel()
+
+	_, err = r.client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		Key:                       r.GetKey(key),
 		TableName:                 r.tablename,
 		UpdateExpression:          expr.Update(),
@@ -158,7 +168,12 @@ func (r *dynamodbWrapper) Insert(ctx context.Context, table string, key string, 
 	if err != nil {
 		panic(err)
 	}
-	_, err = r.client.PutItem(context.TODO(),
+
+	// create a new context from the previous ctx with a timeout, e.g. 5 milliseconds
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(r.timeoutMilliseconds)*time.Millisecond)
+	defer cancel()
+
+	_, err = r.client.PutItem(ctx,
 		&dynamodb.PutItemInput{
 			TableName: r.tablename,
 			Item:      item,
@@ -172,7 +187,11 @@ func (r *dynamodbWrapper) Insert(ctx context.Context, table string, key string, 
 }
 
 func (r *dynamodbWrapper) Delete(ctx context.Context, table string, key string) error {
-	_, err := r.client.DeleteItem(context.TODO(), &dynamodb.DeleteItemInput{
+	// create a new context from the previous ctx with a timeout, e.g. 5 milliseconds
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(r.timeoutMilliseconds)*time.Millisecond)
+	defer cancel()
+
+	_, err := r.client.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 		TableName: r.tablename,
 		Key:       r.GetKey(key),
 	})
@@ -291,6 +310,8 @@ func (r dynamoDbCreator) Create(p *properties.Properties) (ycsb.DB, error) {
 	rds.hashKey = p.GetString(hashKeyFieldName, hashKeyFieldNameDefault)
 	rds.hashKeyPtr = aws.String(rds.hashKey)
 	rds.hashKeyValue = p.GetString(hashKeyValue, hashKeyValueDefault)
+	rds.timeoutMilliseconds = p.GetInt64(operationTimeoutFieldName, operationTimeoutFieldNameDefault)
+	rds.maxRetry = p.GetInt(maxRetryFieldName, maxRetryFieldNameDefault)
 	rds.readCapacityUnits = p.GetInt64(readCapacityUnitsFieldName, readCapacityUnitsFieldNameDefault)
 	rds.writeCapacityUnits = p.GetInt64(writeCapacityUnitsFieldName, writeCapacityUnitsFieldNameDefault)
 	rds.consistentRead = p.GetBool(consistentReadFieldName, consistentReadFieldNameDefault)
@@ -310,13 +331,17 @@ func (r dynamoDbCreator) Create(p *properties.Properties) (ycsb.DB, error) {
 			so.RateLimiter = ratelimit.NewTokenRateLimit(10000000)
 		})
 	})
+	// retry nums
+	retryNums := config.WithRetryer(func() aws.Retryer {
+		return retry.AddWithMaxAttempts(retry.NewStandard(), rds.maxRetry)
+	})
 	if strings.Compare(endpoint, endpointFieldDefault) == 0 {
 		if strings.Compare(region, regionFieldDefault) != 0 {
 			// if endpoint is default but we have region
-			cfg, err = config.LoadDefaultConfig(context.TODO(), config.WithRegion(region), tokenRateLimiter)
+			cfg, err = config.LoadDefaultConfig(context.TODO(), config.WithRegion(region), tokenRateLimiter, retryNums)
 		} else {
 			// if both endpoint and region are default
-			cfg, err = config.LoadDefaultConfig(context.TODO(), tokenRateLimiter)
+			cfg, err = config.LoadDefaultConfig(context.TODO(), tokenRateLimiter, retryNums)
 		}
 	} else {
 		cfg, err = config.LoadDefaultConfig(context.TODO(),
@@ -326,6 +351,7 @@ func (r dynamoDbCreator) Create(p *properties.Properties) (ycsb.DB, error) {
 					return aws.Endpoint{URL: endpoint, SigningRegion: region}, nil
 				})),
 			tokenRateLimiter,
+			retryNums,
 		)
 	}
 	if err != nil {
@@ -387,6 +413,10 @@ const (
 	hashKeyFieldNameDefault            = "hashkey"
 	hashKeyValue                       = "dynamodb.hashkey.value"
 	hashKeyValueDefault                = "hash"
+	operationTimeoutFieldName          = "dynamodb.request.timeout.ms"
+	operationTimeoutFieldNameDefault   = 1000
+	maxRetryFieldName                  = "dynamodb.maxretry"
+	maxRetryFieldNameDefault           = 3
 	readCapacityUnitsFieldName         = "dynamodb.rc.units"
 	readCapacityUnitsFieldNameDefault  = 10
 	writeCapacityUnitsFieldName        = "dynamodb.wc.units"

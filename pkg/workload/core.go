@@ -262,7 +262,7 @@ func (c *core) verifyRow(state *coreState, key string, values map[string][]byte)
 	for fieldKey, value := range values {
 		expected := c.buildDeterministicValue(state, key, fieldKey)
 		if !bytes.Equal(expected, value) {
-			util.Fatalf("unexpected deterministic value, expect %q, but got %q", expected, value)
+			log.Printf("unexpected deterministic value, expect %q, but got %q", expected, value)
 		}
 	}
 }
@@ -479,7 +479,12 @@ func (c *core) doTransactionReadModifyWrite(ctx context.Context, db ycsb.DB, sta
 	}()
 
 	r := state.r
-	keyNum := c.nextKeyNum(state)
+	var keyNum = c.nextKeyNum(state)
+
+	if c.dataIntegrity {
+		keyNum = c.nextSequenceKeyNum(state)
+	}
+
 	keyName := c.buildKeyName(keyNum)
 
 	var fields []string

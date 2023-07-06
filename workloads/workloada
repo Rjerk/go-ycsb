@@ -39,3 +39,4 @@ insertproportion=0
 readmodifywriteproportion=0
 
 requestdistribution=uniform
+core_workload_insertion_retry_limit=0
