@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -37,6 +38,8 @@ type dynamodbWrapper struct {
 	command             string
 	timeoutMilliseconds int64
 	maxRetry            int
+	getItemErrorFile    string
+	putItemErrorFile    string
 }
 
 func (r *dynamodbWrapper) Close() error {
@@ -74,7 +77,14 @@ func (r *dynamodbWrapper) Read(ctx context.Context, table string, key string, fi
 	})
 
 	if err != nil {
-		log.Printf("Couldn't get info about %v. Here's why: %v\n", key, err)
+		// log.Printf("Couldn't get info about %v. Here's why: %v\n", key, err)
+		file, ferr := os.OpenFile(r.getItemErrorFile, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0666)
+		if ferr != nil {
+			log.Fatal(ferr)
+		}
+		defer file.Close()
+		logger := log.New(file, "", log.LstdFlags)
+		logger.Printf("Couldn't add %q to table. Here's why: %v\n", key, err)
 	} else {
 		err = attributevalue.UnmarshalMap(response.Item, &data)
 		if err != nil {
@@ -156,7 +166,6 @@ func (r *dynamodbWrapper) Update(ctx context.Context, table string, key string, 
 }
 
 func (r *dynamodbWrapper) Insert(ctx context.Context, table string, key string, values map[string][]byte) (err error) {
-
 	if r.primaryKeyType == "HASH_AND_RANGE" {
 		values[r.hashKey] = []byte(r.hashKeyValue)
 		values[r.primarykey] = []byte(key)
@@ -169,7 +178,7 @@ func (r *dynamodbWrapper) Insert(ctx context.Context, table string, key string, 
 		panic(err)
 	}
 
-	// create a new context from the previous ctx with a timeout, e.g. 5 milliseconds
+	// create a new context from the previous ctx with a timeout, e.g. 1000 milliseconds
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(r.timeoutMilliseconds)*time.Millisecond)
 	defer cancel()
 
@@ -181,7 +190,14 @@ func (r *dynamodbWrapper) Insert(ctx context.Context, table string, key string, 
 			ReturnValues: "ALL_OLD",
 		})
 	if err != nil {
-		log.Printf("Couldn't add item to table. Here's why: %v\n", err)
+		// log.Printf("Couldn't add %q to table. Here's why: %v\n", key, err)
+		file, ferr := os.OpenFile(r.putItemErrorFile, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0666)
+		if ferr != nil {
+			log.Fatal(ferr)
+		}
+		defer file.Close()
+		logger := log.New(file, "", log.LstdFlags)
+		logger.Printf("Couldn't add %q to table. Here's why: %v\n", key, err)
 	}
 	return
 }
@@ -312,6 +328,8 @@ func (r dynamoDbCreator) Create(p *properties.Properties) (ycsb.DB, error) {
 	rds.hashKeyValue = p.GetString(hashKeyValue, hashKeyValueDefault)
 	rds.timeoutMilliseconds = p.GetInt64(operationTimeoutFieldName, operationTimeoutFieldNameDefault)
 	rds.maxRetry = p.GetInt(maxRetryFieldName, maxRetryFieldNameDefault)
+	rds.getItemErrorFile = p.GetString(getItemErrorFileFieldName, getItemErrorFileFieldNameDefault)
+	rds.putItemErrorFile = p.GetString(putItemErrorFileFieldName, putItemErrorFileFieldNameDefault)
 	rds.readCapacityUnits = p.GetInt64(readCapacityUnitsFieldName, readCapacityUnitsFieldNameDefault)
 	rds.writeCapacityUnits = p.GetInt64(writeCapacityUnitsFieldName, writeCapacityUnitsFieldNameDefault)
 	rds.consistentRead = p.GetBool(consistentReadFieldName, consistentReadFieldNameDefault)
@@ -417,6 +435,10 @@ const (
 	operationTimeoutFieldNameDefault   = 1000
 	maxRetryFieldName                  = "dynamodb.maxretry"
 	maxRetryFieldNameDefault           = 3
+	getItemErrorFileFieldName          = "dynamodb.getitem.file"
+	getItemErrorFileFieldNameDefault   = "getitem_error.log"
+	putItemErrorFileFieldName          = "dynamodb.putitem.file"
+	putItemErrorFileFieldNameDefault   = "putitem_error.log"
 	readCapacityUnitsFieldName         = "dynamodb.rc.units"
 	readCapacityUnitsFieldNameDefault  = 10
 	writeCapacityUnitsFieldName        = "dynamodb.wc.units"

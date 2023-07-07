@@ -20,6 +20,7 @@ import (
 	"log"
 	"math"
 	"math/rand"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -255,14 +256,30 @@ func (c *core) verifyRow(state *coreState, key string, values map[string][]byte)
 	// log.Printf("values: %q\n", values)
 	if len(values) == 0 {
 		// null data here, need panic?
-		log.Printf("Panic:The response of key %q is null!\n", key)
+		// log.Printf("Panic:The response of key %q is null!\n", key)
+		file_path := c.p.GetString(prop.GetItemPanicFile, prop.GetItemPanicFileDefault)
+		file, err := os.OpenFile(file_path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0666)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer file.Close()
+		logger := log.New(file, "", log.LstdFlags)
+		logger.Printf("Panic:The response of key %q is null!\n", key)
 		// return
 	}
 
 	for fieldKey, value := range values {
 		expected := c.buildDeterministicValue(state, key, fieldKey)
 		if !bytes.Equal(expected, value) {
-			log.Printf("unexpected deterministic value, expect %q, but got %q", expected, value)
+			// log.Printf("unexpected deterministic value, expect %q, but got %q", expected, value)
+			file_path := c.p.GetString(prop.GetItemUnexpectedFile, prop.GetItemUnexpectedFileDefault)
+			file, err := os.OpenFile(file_path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0666)
+			if err != nil {
+				log.Fatal(err)
+			}
+			defer file.Close()
+			logger := log.New(file, "", log.LstdFlags)
+			logger.Printf("unexpected deterministic value, expect %q, but got %q", expected, value)
 		}
 	}
 }

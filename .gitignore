@@ -7,6 +7,7 @@ log
 vendor
 tool/tool
 .DS_Store
+*.log
 
 # percentile output format
 *.txt
