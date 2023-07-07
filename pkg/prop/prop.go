@@ -109,6 +109,12 @@ const (
 	KeyPrefix        = "keyprefix"
 	KeyPrefixDefault = "user"
 
+	GetItemPanicFile        = "getitem.panic.file"
+	GetItemPanicFileDefault = "getItemPanic.log"
+
+	GetItemUnexpectedFile        = "getitem.unexpected.file"
+	GetItemUnexpectedFileDefault = "getItemUnexpected.log"
+
 	LogInterval = "measurement.interval"
 
 	MeasurementType          = "measurementtype"
