@@ -29,14 +29,15 @@ fieldcount=5
 fieldlength=100
 
 readallfields=true
+writeallfields=true
 dataintegrity=true
 
-readproportion=1
+readproportion=0
 deleteproportion=0
 updateproportion=0
 scanproportion=0
 insertproportion=0
-readmodifywriteproportion=0
+readmodifywriteproportion=1
 
 requestdistribution=uniform
 core_workload_insertion_retry_limit=0

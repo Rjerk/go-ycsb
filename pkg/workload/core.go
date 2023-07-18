@@ -177,7 +177,11 @@ func (c *core) buildKeyName(keyNum int64) string {
 	return fmt.Sprintf("%s%0[3]*[2]d", prefix, keyNum, c.zeroPadding)
 }
 
-func (c *core) buildSingleValue(state *coreState, key string) map[string][]byte {
+func (c *core) buildSingleValue(state *coreState, key string, options ...bool) map[string][]byte {
+	update := false
+	if len(options) > 0 {
+		update = options[0]
+	}
 	values := make(map[string][]byte, 1)
 
 	r := state.r
@@ -185,7 +189,11 @@ func (c *core) buildSingleValue(state *coreState, key string) map[string][]byte 
 
 	var buf []byte
 	if c.dataIntegrity {
-		buf = c.buildDeterministicValue(state, key, fieldKey)
+		if update {
+			buf = c.buildUpdateDeterministicValue(state, key, fieldKey)
+		} else {
+			buf = c.buildDeterministicValue(state, key, fieldKey)
+		}
 	} else {
 		buf = c.buildRandomValue(state)
 	}
@@ -195,13 +203,21 @@ func (c *core) buildSingleValue(state *coreState, key string) map[string][]byte 
 	return values
 }
 
-func (c *core) buildValues(state *coreState, key string) map[string][]byte {
+func (c *core) buildValues(state *coreState, key string, options ...bool) map[string][]byte {
+	update := false
+	if len(options) > 0 {
+		update = options[0]
+	}
 	values := make(map[string][]byte, c.fieldCount)
 
 	for _, fieldKey := range state.fieldNames {
 		var buf []byte
 		if c.dataIntegrity {
-			buf = c.buildDeterministicValue(state, key, fieldKey)
+			if update {
+				buf = c.buildUpdateDeterministicValue(state, key, fieldKey)
+			} else {
+				buf = c.buildDeterministicValue(state, key, fieldKey)
+			}
 		} else {
 			buf = c.buildRandomValue(state)
 		}
@@ -252,7 +268,31 @@ func (c *core) buildDeterministicValue(state *coreState, key string, fieldKey st
 	return b.Bytes()
 }
 
-func (c *core) verifyRow(state *coreState, key string, values map[string][]byte) {
+func (c *core) buildUpdateDeterministicValue(state *coreState, key string, fieldKey string) []byte {
+	// TODO: use pool for the buffer
+	r := state.r
+	size := c.fieldLengthGenerator.Next(r)
+	buf := c.getValueBuffer(int(size + 21))
+	b := bytes.NewBuffer(buf[0:0])
+	b.WriteString(key)
+	b.WriteByte(':')
+	b.WriteString("update")
+	b.WriteByte(':')
+	b.WriteString(strings.ToLower(fieldKey))
+	for int64(b.Len()) < size {
+		b.WriteByte(':')
+		n := util.BytesHash64(b.Bytes())
+		b.WriteString(strconv.FormatUint(uint64(n), 10))
+	}
+	b.Truncate(int(size))
+	return b.Bytes()
+}
+
+func (c *core) verifyRow(state *coreState, key string, values map[string][]byte, options ...bool) {
+	update := false
+	if len(options) > 0 {
+		update = options[0]
+	}
 	// log.Printf("values: %q\n", values)
 	if len(values) == 0 {
 		// null data here, need panic?
@@ -270,6 +310,9 @@ func (c *core) verifyRow(state *coreState, key string, values map[string][]byte)
 
 	for fieldKey, value := range values {
 		expected := c.buildDeterministicValue(state, key, fieldKey)
+		if update {
+			expected = c.buildUpdateDeterministicValue(state, key, fieldKey)
+		}
 		if !bytes.Equal(expected, value) {
 			// log.Printf("unexpected deterministic value, expect %q, but got %q", expected, value)
 			file_path := c.p.GetString(prop.GetItemUnexpectedFile, prop.GetItemUnexpectedFileDefault)
@@ -525,12 +568,12 @@ func (c *core) doTransactionReadModifyWrite(ctx context.Context, db ycsb.DB, sta
 		return err
 	}
 
-	if err := db.Update(ctx, c.table, keyName, values); err != nil {
-		return err
-	}
+	// if err := db.Update(ctx, c.table, keyName, values); err != nil {
+	// 	return err
+	// }
 
 	if c.dataIntegrity {
-		c.verifyRow(state, keyName, readValues)
+		c.verifyRow(state, keyName, readValues, true)
 	}
 
 	return nil
@@ -569,13 +612,23 @@ func (c *core) doTransactionScan(ctx context.Context, db ycsb.DB, state *coreSta
 
 func (c *core) doTransactionUpdate(ctx context.Context, db ycsb.DB, state *coreState) error {
 	keyNum := c.nextKeyNum(state)
+	if c.dataIntegrity {
+		keyNum = c.nextSequenceKeyNum(state)
+	}
+
 	keyName := c.buildKeyName(keyNum)
 
 	var values map[string][]byte
 	if c.writeAllFields {
 		values = c.buildValues(state, keyName)
+		if c.dataIntegrity {
+			values = c.buildValues(state, keyName, true)
+		}
 	} else {
 		values = c.buildSingleValue(state, keyName)
+		if c.dataIntegrity {
+			values = c.buildSingleValue(state, keyName, true)
+		}
 	}
 
 	defer c.putValues(values)
