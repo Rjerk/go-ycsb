@@ -84,7 +84,7 @@ func (r *dynamodbWrapper) Read(ctx context.Context, table string, key string, fi
 		}
 		defer file.Close()
 		logger := log.New(file, "", log.LstdFlags)
-		logger.Printf("Couldn't add %q to table. Here's why: %v\n", key, err)
+		logger.Printf("Couldn't get info about %q. Here's why: %v\n", key, err)
 	} else {
 		err = attributevalue.UnmarshalMap(response.Item, &data)
 		if err != nil {
@@ -117,6 +117,7 @@ func (r *dynamodbWrapper) GetKey(key string) map[string]types.AttributeValue {
 
 func (r *dynamodbWrapper) Scan(ctx context.Context, table string, startKey string, count int, fields []string) (result []map[string][]byte, err error) {
 	limit := int32(count)
+	data := make([]map[string][]byte, len(fields))
 
 	response, err := r.client.Scan(context.TODO(), &dynamodb.ScanInput{
 		TableName:         r.tablename,
@@ -125,10 +126,8 @@ func (r *dynamodbWrapper) Scan(ctx context.Context, table string, startKey strin
 		Limit:             &limit,
 	})
 
-	data := make([]map[string][]byte, len(fields))
 	if err != nil {
 		panic(fmt.Sprintf("failed to Scan items, %v", err))
-		return data, err
 	}
 
 	err = attributevalue.UnmarshalListOfMaps(response.Items, &data)
@@ -158,6 +157,7 @@ func (r *dynamodbWrapper) Update(ctx context.Context, table string, key string, 
 		UpdateExpression:          expr.Update(),
 		ExpressionAttributeNames:  expr.Names(),
 		ExpressionAttributeValues: expr.Values(),
+		ReturnValues:              "ALL_OLD",
 	})
 	if err != nil {
 		log.Printf("Couldn't update item to table. Here's why: %v\nUpdateExpression:%s\nExpressionAttributeNames:%s\n", err, *expr.Update(), expr.Names())
