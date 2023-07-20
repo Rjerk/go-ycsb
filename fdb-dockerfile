@@ -1,35 +1,13 @@
-FROM golang:1.18.3-stretch
+FROM centos:centos7.9.2009
 
-ENV GOPATH /go
+ARG fdb_version=7.1.27
+ENV FDB_VERSION=$fdb_version
 
-RUN apt-get update \
- && apt-get install -y \
-                wget \
-                dpkg \
-                python \                
-                git \
-                net-tools 
+# RUN curl http://100.71.8.120:877/deps/foundationdb/foundationdb-clients-${FDB_VERSION}-1.el7.x86_64.rpm --output /foundationdb-clients-${FDB_VERSION}-1.el7.x86_64.rpm
 
-RUN cd / \
-    && wget https://github.com/apple/foundationdb/releases/download/7.2.5/foundationdb-clients_7.2.5-1_amd64.deb \
-    && dpkg -i foundationdb-clients_7.2.5-1_amd64.deb
+RUN curl http://100.71.8.120:877/deps/foundationdb/libfdb_c-${FDB_VERSION}.x86_64.so --output /usr/lib64/libfdb_c.so
 
-ADD . /go/src/github.com/pingcap/go-ycsb
-
-WORKDIR /go/src/github.com/pingcap/go-ycsb
-
-# RUN GO111MODULE=on go build -tags "foundationdb dynamodb" -o /go-ycsb ./cmd/* && ls /go/*
-
-FROM ubuntu:18.04
-
-RUN apt-get update \
- && apt-get install -y dpkg
-
-COPY --from=0 /foundationdb-clients_7.2.5-1_amd64.deb /foundationdb-clients_7.2.5-1_amd64.deb
-RUN dpkg -i foundationdb-clients_7.2.5-1_amd64.deb && rm -f foundationdb-clients_7.2.5-1_amd64.deb \
- && rm -rf /usr/bin/dr_agent /usr/bin/fdbbackup /usr/bin/fdbdr /usr/bin/fdbrestore /usr/lib/foundationdb/backup_agent
-
-# COPY --from=0 /go-ycsb /go-ycsb
+# make the binary before run "docker build"
 COPY ./bin/go-ycsb /go-ycsb
 
 EXPOSE 6060
