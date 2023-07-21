@@ -38,6 +38,7 @@ type dynamodbWrapper struct {
 	command             string
 	timeoutMilliseconds int64
 	maxRetry            int
+	returnValues        types.ReturnValue
 	getItemErrorFile    string
 	putItemErrorFile    string
 }
@@ -91,9 +92,8 @@ func (r *dynamodbWrapper) Read(ctx context.Context, table string, key string, fi
 			log.Printf("Couldn't unmarshal response. Here's why: %v\n", err)
 		}
 	}
-	delete(data, r.primarykey)
-	// log.Printf("new data: %q\n", data)
-	return
+
+	return data, err
 
 }
 
@@ -124,6 +124,7 @@ func (r *dynamodbWrapper) Scan(ctx context.Context, table string, startKey strin
 		ExclusiveStartKey: r.GetKey(startKey),
 		AttributesToGet:   fields,
 		Limit:             &limit,
+		ConsistentRead:    aws.Bool(r.consistentRead),
 	})
 
 	if err != nil {
@@ -157,7 +158,7 @@ func (r *dynamodbWrapper) Update(ctx context.Context, table string, key string, 
 		UpdateExpression:          expr.Update(),
 		ExpressionAttributeNames:  expr.Names(),
 		ExpressionAttributeValues: expr.Values(),
-		ReturnValues:              "ALL_OLD",
+		ReturnValues:              r.returnValues,
 	})
 	if err != nil {
 		log.Printf("Couldn't update item to table. Here's why: %v\nUpdateExpression:%s\nExpressionAttributeNames:%s\n", err, *expr.Update(), expr.Names())
@@ -184,11 +185,11 @@ func (r *dynamodbWrapper) Insert(ctx context.Context, table string, key string, 
 
 	_, err = r.client.PutItem(ctx,
 		&dynamodb.PutItemInput{
-			TableName: r.tablename,
-			Item:      item,
-			// ConditionExpression: aws.String("attribute_not_exists(obj)"),
-			ReturnValues: "ALL_OLD",
+			TableName:    r.tablename,
+			Item:         item,
+			ReturnValues: r.returnValues,
 		})
+
 	if err != nil {
 		// log.Printf("Couldn't add %q to table. Here's why: %v\n", key, err)
 		file, ferr := os.OpenFile(r.putItemErrorFile, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0666)
@@ -199,7 +200,8 @@ func (r *dynamodbWrapper) Insert(ctx context.Context, table string, key string, 
 		logger := log.New(file, "", log.LstdFlags)
 		logger.Printf("Couldn't add %q to table. Here's why: %v\n", key, err)
 	}
-	return
+
+	return err
 }
 
 func (r *dynamodbWrapper) Delete(ctx context.Context, table string, key string) error {
@@ -334,8 +336,24 @@ func (r dynamoDbCreator) Create(p *properties.Properties) (ycsb.DB, error) {
 	rds.writeCapacityUnits = p.GetInt64(writeCapacityUnitsFieldName, writeCapacityUnitsFieldNameDefault)
 	rds.consistentRead = p.GetBool(consistentReadFieldName, consistentReadFieldNameDefault)
 	rds.deleteAfterRun = p.GetBool(deleteTableAfterRunFieldName, deleteTableAfterRunFieldNameDefault)
+
+	returnValues := p.GetString(returnValuesType, returnValuesTypeDefault)
+	switch returnValues {
+	case "NONE":
+		rds.returnValues = types.ReturnValueNone
+	case "AL_OLD":
+		rds.returnValues = types.ReturnValueAllOld
+	case "UPDATED_OLD":
+		rds.returnValues = types.ReturnValueUpdatedOld
+	case "ALL_NEW":
+		rds.returnValues = types.ReturnValueAllNew
+	case "UPDATED_NEW":
+		rds.returnValues = types.ReturnValueUpdatedNew
+	}
+
 	endpoint := p.GetString(endpointField, endpointFieldDefault)
 	region := p.GetString(regionField, regionFieldDefault)
+
 	rds.command, _ = p.Get(prop.Command)
 	var err error = nil
 	var cfg aws.Config
@@ -456,6 +474,8 @@ const (
 	consistentReadFieldNameDefault      = false
 	deleteTableAfterRunFieldName        = "dynamodb.delete.after.run.stage"
 	deleteTableAfterRunFieldNameDefault = false
+	returnValuesType                    = "dynamodb.return.values.type"
+	returnValuesTypeDefault             = "NONE"
 )
 
 func init() {

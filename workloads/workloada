@@ -30,14 +30,14 @@ fieldlength=100
 
 readallfields=true
 writeallfields=true
-dataintegrity=true
+dataintegrity=false
 
-readproportion=0
+readproportion=1
 deleteproportion=0
 updateproportion=0
 scanproportion=0
 insertproportion=0
-readmodifywriteproportion=1
+readmodifywriteproportion=0
 
 requestdistribution=uniform
 core_workload_insertion_retry_limit=0
