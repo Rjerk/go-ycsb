@@ -245,21 +245,21 @@ func (r *dynamodbWrapper) createTable() (*types.TableDescription, error) {
 		table, err := r.client.CreateTable(context.TODO(), &dynamodb.CreateTableInput{
 			AttributeDefinitions: []types.AttributeDefinition{
 				{
-					AttributeName: r.primarykeyPtr,
+					AttributeName: r.hashKeyPtr,
 					AttributeType: types.ScalarAttributeTypeB,
 				},
 				{
-					AttributeName: r.hashKeyPtr,
+					AttributeName: r.primarykeyPtr,
 					AttributeType: types.ScalarAttributeTypeB,
 				},
 			},
 			KeySchema: []types.KeySchemaElement{
 				{
-					AttributeName: r.primarykeyPtr,
+					AttributeName: r.hashKeyPtr,
 					KeyType:       types.KeyTypeHash,
 				},
 				{
-					AttributeName: r.hashKeyPtr,
+					AttributeName: r.primarykeyPtr,
 					KeyType:       types.KeyTypeRange,
 				},
 			},
@@ -330,12 +330,13 @@ func (r dynamoDbCreator) Create(p *properties.Properties) (ycsb.DB, error) {
 	rds.hashKeyValue = p.GetString(hashKeyValue, hashKeyValueDefault)
 	rds.timeoutMilliseconds = p.GetInt64(operationTimeoutFieldName, operationTimeoutFieldNameDefault)
 	rds.maxRetry = p.GetInt(maxRetryFieldName, maxRetryFieldNameDefault)
-	rds.getItemErrorFile = p.GetString(getItemErrorFileFieldName, getItemErrorFileFieldNameDefault)
-	rds.putItemErrorFile = p.GetString(putItemErrorFileFieldName, putItemErrorFileFieldNameDefault)
 	rds.readCapacityUnits = p.GetInt64(readCapacityUnitsFieldName, readCapacityUnitsFieldNameDefault)
 	rds.writeCapacityUnits = p.GetInt64(writeCapacityUnitsFieldName, writeCapacityUnitsFieldNameDefault)
 	rds.consistentRead = p.GetBool(consistentReadFieldName, consistentReadFieldNameDefault)
 	rds.deleteAfterRun = p.GetBool(deleteTableAfterRunFieldName, deleteTableAfterRunFieldNameDefault)
+
+	rds.getItemErrorFile = p.GetString(getItemErrorFileFieldName, getItemErrorFileFieldNameDefault)
+	rds.putItemErrorFile = p.GetString(putItemErrorFileFieldName, putItemErrorFileFieldNameDefault)
 
 	returnValues := p.GetString(returnValuesType, returnValuesTypeDefault)
 	switch returnValues {
@@ -441,22 +442,47 @@ const (
 	// you have setup for the test table. There are two choices:
 	// - HASH (default)
 	// - HASH_AND_RANGE
-	primaryKeyTypeFieldName            = "dynamodb.primarykey.type"
-	primaryKeyTypeFieldNameDefault     = "HASH"
-	primaryKeyFieldName                = "dynamodb.primarykey"
-	primaryKeyFieldNameDefault         = "_key"
-	hashKeyFieldName                   = "dynamodb.hashkey"
-	hashKeyFieldNameDefault            = "hashkey"
+	//
+	// When testing the DB in HASH mode (which is the default), your table's
+	// primary key must be of the "HASH" key type, and the name of the primary key
+	// is specified via the dynamodb.primaryKey property. In this mode, all
+	// keys from YCSB are hashed across multiple hash partitions and
+	// performance of individual operations are good. However, query across
+	// multiple items is eventually consistent in this mode and relies on the
+	// global secondary index.
+	//
+	//
+	// When testing the DB in HASH_AND_RANGE mode, your table's primary key must be
+	// of the "HASH_AND_RANGE" key type. You need to specify the name of the
+	// hash key via the "dynamodb.hashKeyName" property and you also need to
+	// specify the name of the range key via the "dynamodb.primaryKey" property.
+	// In this mode, keys supplied by YCSB will be used as the range part of
+	// the primary key and the hash part of the primary key will have a fixed value.
+	// Optionally you can designate the value used in the hash part of the primary
+	// key via the dynamodb.hashKeyValue.
+	//
+	// The purpose of the HASH_AND_RANGE mode is to benchmark the performance
+	// characteristics of a single logical hash partition. This is useful because
+	// so far the only practical way to do strongly consistent query is to do it
+	// in a single hash partition (Whole table scan can be consistent but it becomes
+	// less practical when the table is really large). Therefore, for users who
+	// really want to have strongly consistent query, it's important for them to
+	// know the performance capabilities of a single logical hash partition so
+	// they can plan their application accordingly.
+	primaryKeyTypeFieldName        = "dynamodb.primarykey.type"
+	primaryKeyTypeFieldNameDefault = "HASH"
+	primaryKeyFieldName            = "dynamodb.primarykey"
+	primaryKeyFieldNameDefault     = "_key"
+	hashKeyFieldName               = "dynamodb.hashkey.name"
+	hashKeyFieldNameDefault        = "hashkey"
+	// Optionally you can specify a value for the hash part of
+	// the primary key when testing in HASH_AND_RANG mode.
 	hashKeyValue                       = "dynamodb.hashkey.value"
 	hashKeyValueDefault                = "hash"
 	operationTimeoutFieldName          = "dynamodb.request.timeout.ms"
 	operationTimeoutFieldNameDefault   = 1000
 	maxRetryFieldName                  = "dynamodb.maxretry"
 	maxRetryFieldNameDefault           = 3
-	getItemErrorFileFieldName          = "dynamodb.getitem.file"
-	getItemErrorFileFieldNameDefault   = "getitem_error.log"
-	putItemErrorFileFieldName          = "dynamodb.putitem.file"
-	putItemErrorFileFieldNameDefault   = "putitem_error.log"
 	readCapacityUnitsFieldName         = "dynamodb.rc.units"
 	readCapacityUnitsFieldNameDefault  = 10
 	writeCapacityUnitsFieldName        = "dynamodb.wc.units"
@@ -476,6 +502,10 @@ const (
 	deleteTableAfterRunFieldNameDefault = false
 	returnValuesType                    = "dynamodb.return.values.type"
 	returnValuesTypeDefault             = "NONE"
+	getItemErrorFileFieldName           = "dynamodb.getitem.errorlog"
+	putItemErrorFileFieldName           = "dynamodb.putitem.errorlog"
+	getItemErrorFileFieldNameDefault    = "getitem_error.log"
+	putItemErrorFileFieldNameDefault    = "putitem_error.log"
 )
 
 func init() {
