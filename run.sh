@@ -27,7 +27,7 @@ scanproportion=0
 insertproportion=0
 
 requestdistribution=uniform
-threads=32
+threads=16
 mode=load
 
 image="registry.paas/eos-toolchains/go-ycsb:fdb-7.1.33"
@@ -38,7 +38,7 @@ docker run $image $mode dynamodb --threads=$threads \
     -p workload=core \
     -p fieldcount=$fieldcount \
     -p fieldlength=$fieldlength \
-    -p readallfields=true \
+    -p readallfields=$readallfields \
     -p readproportion=$readproportion \
     -p updateproportion=$updateproportion \
     -p scanproportion=$scanproportion \
@@ -46,6 +46,15 @@ docker run $image $mode dynamodb --threads=$threads \
     -p requestdistribution=$requestdistribution \
     -p dynamodb.tablename=$dynamodbtablename \
     -p dynamodb.ensure.clean.table=$dynamodbensurecleantable \
+    -p dynamodb.primarykey.type=$dynamodbprimarykeytype \
+    -p dynamodb.primarykey=$dynamodbprimarykey \
+    -p dynamodb.hashkey=$dynamodbhashkey \
+    -p dynamodb.hashkey.value=$dynamodbhashkeyvalue \
+    -p dynamodb.rc.units=$dynamodbrcunits \
+    -p dynamodb.wc.units=$dynamodbwcunits \
+    -p dynamodb.region=$dynamodbregion \
+    -p dynamodb.consistent.reads=$dynamodbconsistentreads \
+    -p dynamodb.delete.after.run.stage=$dynamodbdeleteafterrunstage \
     -p dynamodb.endpoint=$dynamodbendpoint
 
 # fdbcluster=/etc/foundationdb/fdb.cluster
