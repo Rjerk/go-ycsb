@@ -254,11 +254,11 @@ func (r *dynamodbWrapper) createTable() (*types.TableDescription, error) {
 			KeySchema: []types.KeySchemaElement{
 				{
 					AttributeName: r.primarykeyPtr,
-					KeyType:       types.KeyTypeHash,
+					KeyType:       types.KeyTypeRange,
 				},
 				{
 					AttributeName: r.hashKeyPtr,
-					KeyType:       types.KeyTypeRange,
+					KeyType:       types.KeyTypeHash,
 				},
 			},
 			TableName: r.tablename,
