@@ -202,6 +202,35 @@ func (r *dynamodbWrapper) Insert(ctx context.Context, table string, key string, 
 	return
 }
 
+func (r *dynamodbWrapper) BatchInsert(ctx context.Context, table string, keys []string, values []map[string][]byte) (err error) {
+	log.Printf("BatchInsert")
+
+	input := &dynamodb.BatchWriteItemInput{
+		RequestItems: map[string][]types.WriteRequest{
+			table: make([]types.WriteRequest, len(values)),
+		},
+	}
+
+	for i, value := range values {
+		item, err := attributevalue.MarshalMap(value)
+		if err != nil {
+			panic(err)
+		}
+		input.RequestItems[table][i] = types.WriteRequest{
+			PutRequest: &types.PutRequest{
+				Item: item,
+			},
+		}
+	}
+	_, err = r.client.BatchWriteItem(ctx, input)
+
+	if err != nil {
+		log.Printf("Couldn't add items to table. Here's why: %v\n", err)
+	}
+
+	return
+}
+
 func (r *dynamodbWrapper) Delete(ctx context.Context, table string, key string) error {
 	// create a new context from the previous ctx with a timeout, e.g. 5 milliseconds
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(r.timeoutMilliseconds)*time.Millisecond)

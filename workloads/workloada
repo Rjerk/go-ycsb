@@ -32,6 +32,8 @@ readallfields=true
 writeallfields=true
 dataintegrity=true
 
+batch.size = 5
+
 readproportion=0
 deleteproportion=0
 updateproportion=0

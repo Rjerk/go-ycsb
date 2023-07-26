@@ -372,6 +372,7 @@ func (c *core) DoInsert(ctx context.Context, db ycsb.DB) error {
 
 // DoBatchInsert implements the Workload DoBatchInsert interface.
 func (c *core) DoBatchInsert(ctx context.Context, batchSize int, db ycsb.DB) error {
+	log.Printf("DoBatchInsert")
 	batchDB, ok := db.(ycsb.BatchDB)
 	if !ok {
 		return fmt.Errorf("the %T does't implement the batchDB interface", db)
