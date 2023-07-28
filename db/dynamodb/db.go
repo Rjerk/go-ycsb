@@ -213,17 +213,26 @@ func (r *dynamodbWrapper) BatchInsert(ctx context.Context, table string, keys []
 	}
 
 	for i, value := range values {
-		value[r.primarykey] = []byte(keys[i])
+
+		if r.primaryKeyType == "HASH_AND_RANGE" {
+			value[r.hashKey] = []byte(r.hashKeyValue)
+			value[r.primarykey] = []byte(keys[i])
+		} else {
+			value[r.primarykey] = []byte(keys[i])
+		}
+
 		item, err := attributevalue.MarshalMap(value)
 		if err != nil {
 			panic(err)
 		}
+
 		input.RequestItems[*r.tablename][i] = types.WriteRequest{
 			PutRequest: &types.PutRequest{
 				Item: item,
 			},
 		}
 	}
+
 	_, err = r.client.BatchWriteItem(ctx, input)
 
 	if err != nil {
