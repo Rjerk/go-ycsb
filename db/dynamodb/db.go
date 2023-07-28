@@ -94,6 +94,13 @@ func (r *dynamodbWrapper) Read(ctx context.Context, table string, key string, fi
 		}
 	}
 
+	if r.primaryKeyType == "HASH_AND_RANGE" {
+		delete(data, r.primarykey)
+		delete(data, r.hashKey)
+	} else {
+		delete(data, r.primarykey)
+	}
+
 	return data, err
 
 }
