@@ -242,9 +242,34 @@ func (r *dynamodbWrapper) BatchInsert(ctx context.Context, table string, keys []
 	return
 }
 
-func (db *dynamodbWrapper) BatchRead(ctx context.Context, table string, keys []string, fields []string) ([]map[string][]byte, error) {
-	var output []map[string][]byte
-	return output, nil
+func (r *dynamodbWrapper) BatchRead(ctx context.Context, table string, keys []string, fields []string) (results []map[string][]byte, err error) {
+	var getKeys []map[string]types.AttributeValue
+	for _, key := range keys {
+		getKeys = append(getKeys, r.GetKey(key))
+	}
+
+	input := &dynamodb.BatchGetItemInput{
+		RequestItems: map[string]types.KeysAndAttributes{
+			*r.tablename: {
+				Keys: getKeys,
+			},
+		},
+	}
+	// TODO: Provided list of item keys shounldn't contains duplicates
+	output, err := r.client.BatchGetItem(ctx, input)
+	if err != nil {
+		log.Printf("Couldn't get info about %v. Here's why: %v\n", getKeys, err)
+	}
+
+	results = make([]map[string][]byte, len(keys))
+	for i, response := range output.Responses[*r.tablename] {
+		log.Printf("response: %T\n", response)
+		err = attributevalue.UnmarshalMap(response, &results[i])
+		if err != nil {
+			log.Printf("Couldn't unmarshal response. Here's why: %v\n", err)
+		}
+	}
+	return
 }
 
 func (db *dynamodbWrapper) BatchUpdate(ctx context.Context, table string, keys []string, values []map[string][]byte) error {
