@@ -23,24 +23,25 @@ import (
 )
 
 type dynamodbWrapper struct {
-	client              *dynamodb.Client
-	tablename           *string
-	primaryKeyType      string
-	primarykey          string
-	primarykeyPtr       *string
-	hashKey             string
-	hashKeyPtr          *string
-	hashKeyValue        string
-	readCapacityUnits   int64
-	writeCapacityUnits  int64
-	consistentRead      bool
-	deleteAfterRun      bool
-	command             string
-	timeoutMilliseconds int64
-	maxRetry            int
-	returnValues        types.ReturnValue
-	getItemErrorFile    string
-	putItemErrorFile    string
+	client                  *dynamodb.Client
+	tablename               *string
+	primaryKeyType          string
+	primarykey              string
+	primarykeyPtr           *string
+	hashKey                 string
+	hashKeyPtr              *string
+	hashKeyValue            string
+	readCapacityUnits       int64
+	writeCapacityUnits      int64
+	consistentRead          bool
+	deleteAfterRun          bool
+	command                 string
+	timeoutMilliseconds     int64
+	maxRetry                int
+	returnValues            types.ReturnValue
+	getItemErrorFile        string
+	putItemErrorFile        string
+	tableDeletionProtection bool
 }
 
 func (r *dynamodbWrapper) Close() error {
@@ -263,7 +264,8 @@ func (r *dynamodbWrapper) createTable() (*types.TableDescription, error) {
 					KeyType:       types.KeyTypeRange,
 				},
 			},
-			TableName: r.tablename,
+			TableName:                 r.tablename,
+			DeletionProtectionEnabled: &r.tableDeletionProtection,
 			ProvisionedThroughput: &types.ProvisionedThroughput{
 				ReadCapacityUnits:  aws.Int64(r.readCapacityUnits),
 				WriteCapacityUnits: aws.Int64(r.writeCapacityUnits),
@@ -294,7 +296,8 @@ func (r *dynamodbWrapper) createTable() (*types.TableDescription, error) {
 					KeyType:       types.KeyTypeHash,
 				},
 			},
-			TableName: r.tablename,
+			TableName:                 r.tablename,
+			DeletionProtectionEnabled: &r.tableDeletionProtection,
 			ProvisionedThroughput: &types.ProvisionedThroughput{
 				ReadCapacityUnits:  aws.Int64(r.readCapacityUnits),
 				WriteCapacityUnits: aws.Int64(r.writeCapacityUnits),
@@ -334,6 +337,7 @@ func (r dynamoDbCreator) Create(p *properties.Properties) (ycsb.DB, error) {
 	rds.writeCapacityUnits = p.GetInt64(writeCapacityUnitsFieldName, writeCapacityUnitsFieldNameDefault)
 	rds.consistentRead = p.GetBool(consistentReadFieldName, consistentReadFieldNameDefault)
 	rds.deleteAfterRun = p.GetBool(deleteTableAfterRunFieldName, deleteTableAfterRunFieldNameDefault)
+	rds.tableDeletionProtection = p.GetBool(tableDeletionProtection, tableDeletionProtectionDefault)
 
 	rds.getItemErrorFile = p.GetString(getItemErrorFileFieldName, getItemErrorFileFieldNameDefault)
 	rds.putItemErrorFile = p.GetString(putItemErrorFileFieldName, putItemErrorFileFieldNameDefault)
@@ -504,6 +508,8 @@ const (
 	returnValuesTypeDefault             = "NONE"
 	getItemErrorFileFieldName           = "dynamodb.getitem.errorlog"
 	putItemErrorFileFieldName           = "dynamodb.putitem.errorlog"
+	tableDeletionProtection             = "dynamodb.table.deletion.protection.enabled"
+	tableDeletionProtectionDefault      = true
 	getItemErrorFileFieldNameDefault    = "getitem_error.log"
 	putItemErrorFileFieldNameDefault    = "putitem_error.log"
 )
