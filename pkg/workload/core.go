@@ -289,13 +289,14 @@ func (c *core) buildUpdateDeterministicValue(state *coreState, key string, field
 }
 
 func (c *core) verifyRow(state *coreState, key string, values map[string][]byte, options ...bool) {
+	log.Printf("verify")
 	update := false
 	if len(options) > 0 {
 		update = options[0]
 	}
 
 	if len(values) == 0 {
-		file, err := os.OpenFile(c.p.GetString(prop.VerifyRowLogFile, prop.VerifyRowLogFileDefault), os.O_APPEND|os.O_CREATE, 0666)
+		file, err := os.OpenFile(c.p.GetString(prop.VerifyRowLogFile, prop.VerifyRowLogFileDefault), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0666)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -311,7 +312,7 @@ func (c *core) verifyRow(state *coreState, key string, values map[string][]byte,
 		}
 		if !bytes.Equal(expected, value) {
 			file_path := c.p.GetString(prop.VerifyRowLogFile, prop.VerifyRowLogFileDefault)
-			file, err := os.OpenFile(file_path, os.O_APPEND|os.O_CREATE, 0666)
+			file, err := os.OpenFile(file_path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0666)
 			if err != nil {
 				log.Fatal(err)
 			}
