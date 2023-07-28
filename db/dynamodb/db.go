@@ -208,11 +208,12 @@ func (r *dynamodbWrapper) Insert(ctx context.Context, table string, key string, 
 func (r *dynamodbWrapper) BatchInsert(ctx context.Context, table string, keys []string, values []map[string][]byte) (err error) {
 	input := &dynamodb.BatchWriteItemInput{
 		RequestItems: map[string][]types.WriteRequest{
-			table: make([]types.WriteRequest, len(values)),
+			*r.tablename: make([]types.WriteRequest, len(values)),
 		},
 	}
 
 	for i, value := range values {
+		value[r.primarykey] = []byte(keys[i])
 		item, err := attributevalue.MarshalMap(value)
 		if err != nil {
 			panic(err)
