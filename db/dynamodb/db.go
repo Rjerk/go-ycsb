@@ -265,12 +265,11 @@ func (r *dynamodbWrapper) BatchRead(ctx context.Context, table string, keys []st
 	// TODO: Provided list of item keys shounldn't contains duplicates
 	output, err := r.client.BatchGetItem(ctx, input)
 	if err != nil {
-		log.Printf("Couldn't get info about %v. Here's why: %v\n", getKeys, err)
+		log.Printf("Couldn't get info about %q. Here's why: %v\n", getKeys, err)
 	}
 
 	results = make([]map[string][]byte, len(keys))
 	for i, response := range output.Responses[*r.tablename] {
-		log.Printf("response: %T\n", response)
 		err = attributevalue.UnmarshalMap(response, &results[i])
 		if err != nil {
 			log.Printf("Couldn't unmarshal response. Here's why: %v\n", err)

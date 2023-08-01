@@ -645,7 +645,7 @@ func (c *core) doBatchTransactionRead(ctx context.Context, batchSize int, db ycs
 
 	keys := make([]string, batchSize)
 	for i := 0; i < batchSize; i++ {
-		keys[i] = c.buildKeyName(c.nextKeyNum(state))
+		keys[i] = c.buildKeyName(c.keySequence.Next(r))
 	}
 
 	_, err := db.BatchRead(ctx, c.table, keys, fields)

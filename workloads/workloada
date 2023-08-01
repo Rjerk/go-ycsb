@@ -23,14 +23,14 @@
 # Request distribution: zipfian
 
 recordcount=10
-operationcount=5
+operationcount=10
 insertstart=0
-insertcount=5
+insertcount=10
 workload=core
 fieldcount=2
 fieldlength=100
 
-#batch.size=5
+batch.size=5
 
 readallfields=true
 writeallfields=true
