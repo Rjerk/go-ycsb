@@ -289,7 +289,6 @@ func (c *core) buildUpdateDeterministicValue(state *coreState, key string, field
 }
 
 func (c *core) verifyRow(state *coreState, key string, values map[string][]byte, options ...bool) {
-	log.Printf("verify")
 	update := false
 	if len(options) > 0 {
 		update = options[0]

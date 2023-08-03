@@ -262,7 +262,7 @@ func (r *dynamodbWrapper) BatchRead(ctx context.Context, table string, keys []st
 			},
 		},
 	}
-	// TODO: Provided list of item keys shounldn't contains duplicates
+
 	output, err := r.client.BatchGetItem(ctx, input)
 	if err != nil {
 		log.Printf("Couldn't get info about %q. Here's why: %v\n", getKeys, err)
