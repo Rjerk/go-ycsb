@@ -41,6 +41,7 @@ type dynamodbWrapper struct {
 	returnValues            types.ReturnValue
 	getItemErrorFile        string
 	putItemErrorFile        string
+	updateItemErrorFile     string
 	tableDeletionProtection bool
 }
 
@@ -169,7 +170,13 @@ func (r *dynamodbWrapper) Update(ctx context.Context, table string, key string, 
 		ReturnValues:              r.returnValues,
 	})
 	if err != nil {
-		log.Printf("Couldn't update item to table. Here's why: %v\nUpdateExpression:%s\nExpressionAttributeNames:%s\n", err, *expr.Update(), expr.Names())
+		file, ferr := os.OpenFile(r.updateItemErrorFile, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0666)
+		if ferr != nil {
+			log.Fatal(ferr)
+		}
+		defer file.Close()
+		logger := log.New(file, "", log.LstdFlags)
+		logger.Printf("Couldn't update item to table. Here's why: %v\nUpdateExpression:%s\nExpressionAttributeNames:%s\n", err, *expr.Update(), expr.Names())
 	}
 	return
 }
@@ -422,6 +429,7 @@ func (r dynamoDbCreator) Create(p *properties.Properties) (ycsb.DB, error) {
 
 	rds.getItemErrorFile = p.GetString(getItemErrorFileFieldName, getItemErrorFileFieldNameDefault)
 	rds.putItemErrorFile = p.GetString(putItemErrorFileFieldName, putItemErrorFileFieldNameDefault)
+	rds.updateItemErrorFile = p.GetString(updateItemErrorFileFieldName, updateItemErrorFileFieldNameDefault)
 
 	returnValues := p.GetString(returnValuesType, returnValuesTypeDefault)
 	switch returnValues {
@@ -589,10 +597,12 @@ const (
 	returnValuesTypeDefault             = "NONE"
 	getItemErrorFileFieldName           = "dynamodb.getitem.errorlog"
 	putItemErrorFileFieldName           = "dynamodb.putitem.errorlog"
+	updateItemErrorFileFieldName        = "dynamodb.updateitem.errorlog"
 	tableDeletionProtection             = "dynamodb.table.deletion.protection.enabled"
 	tableDeletionProtectionDefault      = true
 	getItemErrorFileFieldNameDefault    = "getitem_error.log"
 	putItemErrorFileFieldNameDefault    = "putitem_error.log"
+	updateItemErrorFileFieldNameDefault = "updateitem_error.log"
 )
 
 func init() {
