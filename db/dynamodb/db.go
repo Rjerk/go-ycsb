@@ -176,7 +176,7 @@ func (r *dynamodbWrapper) Update(ctx context.Context, table string, key string, 
 		}
 		defer file.Close()
 		logger := log.New(file, "", log.LstdFlags)
-		logger.Printf("Couldn't update item to table. Here's why: %v\nUpdateExpression:%s\nExpressionAttributeNames:%s\n", err, *expr.Update(), expr.Names())
+		logger.Printf("Couldn't update %q item to table. Here's why: %v\nUpdateExpression:%s\nExpressionAttributeNames:%s\n", key, err, *expr.Update(), expr.Names())
 	}
 	return
 }
@@ -276,12 +276,12 @@ func (r *dynamodbWrapper) BatchRead(ctx context.Context, table string, keys []st
 	}
 
 	results = make([]map[string][]byte, len(keys))
-	for i, response := range output.Responses[*r.tablename] {
-		err = attributevalue.UnmarshalMap(response, &results[i])
-		if err != nil {
-			log.Printf("Couldn't unmarshal response. Here's why: %v\n", err)
-		}
+
+	err = attributevalue.UnmarshalListOfMaps(output.Responses[*r.tablename], &results)
+	if err != nil {
+		log.Printf("Couldn't unmarshal response. Here's why: %v\n", err)
 	}
+
 	return
 }
 
