@@ -3,7 +3,6 @@ package dynamodb
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -137,12 +136,12 @@ func (r *dynamodbWrapper) Scan(ctx context.Context, table string, startKey strin
 	})
 
 	if err != nil {
-		panic(fmt.Sprintf("failed to Scan items, %v", err))
+		log.Printf("failed to Scan items, %v", err)
 	}
 
 	err = attributevalue.UnmarshalListOfMaps(response.Items, &data)
 	if err != nil {
-		panic(fmt.Sprintf("failed to unmarshal Dynamodb Scan Items, %v", err))
+		log.Printf("failed to unmarshal Dynamodb Scan Items, %v", err)
 	}
 
 	result = append(result, data...)
