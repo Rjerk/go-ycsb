@@ -434,7 +434,7 @@ func (r dynamoDbCreator) Create(p *properties.Properties) (ycsb.DB, error) {
 	switch returnValues {
 	case "NONE":
 		rds.returnValues = types.ReturnValueNone
-	case "AL_OLD":
+	case "ALL_OLD":
 		rds.returnValues = types.ReturnValueAllOld
 	case "UPDATED_OLD":
 		rds.returnValues = types.ReturnValueUpdatedOld

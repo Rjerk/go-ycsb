@@ -30,15 +30,15 @@ workload=core
 fieldcount=2
 fieldlength=100
 
-batch.size=5
+# batch.size=5
 
 readallfields=true
 writeallfields=true
 dataintegrity=true
 
-readproportion=1
+readproportion=0
 deleteproportion=0
-updateproportion=0
+updateproportion=1
 scanproportion=0
 insertproportion=0
 readmodifywriteproportion=0
