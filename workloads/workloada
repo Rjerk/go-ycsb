@@ -24,21 +24,19 @@
 
 recordcount=10
 operationcount=10
-insertstart=0
-insertcount=10
 workload=core
-fieldcount=2
-fieldlength=100
+fieldcount=1
+fieldlength=1000
 
-# batch.size=5
+#batch.size=20
 
 readallfields=true
 writeallfields=true
-dataintegrity=true
+dataintegrity=false
 
 readproportion=0
-deleteproportion=0
-updateproportion=1
+deleteproportion=1
+updateproportion=0
 scanproportion=0
 insertproportion=0
 readmodifywriteproportion=0
